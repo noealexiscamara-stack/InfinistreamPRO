@@ -4,9 +4,22 @@
 # docs/GUIDE_VPS.md, since most VPS setups run nginx directly on the host
 # (sharing it with other sites) rather than in a container.
 #
+# The backend service below runs a PRE-BUILT image pulled from GitHub
+# Container Registry (see .github/workflows/backend-image.yml, which builds
+# apps/backend/Dockerfile and pushes it on every push to main) — the VPS
+# never runs `npm ci`/`nest build` itself, it only pulls and runs. This is
+# the deliberate split: full source lives on GitHub, the VPS only ever
+# handles images. See docs/GUIDE_VPS.md.
+#
 # Usage on the VPS, after `cp .env.production.example .env.production` and
-# filling in real secrets:
-#   docker compose --env-file .env.production up -d --build
+# filling in real secrets (IMAGE_TAG defaults to "latest" — pin it to a
+# commit SHA instead for a reproducible/rollback-able deploy):
+#   docker compose --env-file .env.production pull
+#   docker compose --env-file .env.production up -d
+#
+# To build the image locally instead of pulling (e.g. to test a Dockerfile
+# change before it's pushed to CI), use the override file:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml build backend
 #
 # The backend is published on 127.0.0.1:3000 only — never expose it directly
 # to the internet, nginx is what the public actually talks to (product rule
@@ -31,9 +44,7 @@ services:
     # it, over the default docker-compose network.
 
   backend:
-    build:
-      context: .
-      dockerfile: apps/backend/Dockerfile
+    image: ghcr.io/noealexiscamara-stack/infinistream-backend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       postgres:

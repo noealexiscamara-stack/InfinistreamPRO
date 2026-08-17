@@ -35,11 +35,14 @@ relisez le SQL produit, committez-le, puis lancez seulement `migration:run` en p
 Le backend est un service NestJS standard (`node dist/main.js` après `npm run build`) — déployable sur n'importe
 quel hébergeur Node (Render, Railway, Fly.io, un VPS avec PM2 ou Docker).
 
-**Chemin VPS + Docker (celui documenté et vérifié dans ce dépôt)** : `apps/backend/Dockerfile` (build multi-stage,
-n'installe que la dépendance de workspace de `apps/backend`, testé avec `npm ci --workspace=apps/backend` et
-`nest build` dans ce sandbox) + `docker-compose.yml` à la racine (backend + PostgreSQL). Voir
-**`docs/GUIDE_VPS.md`** pour le pas-à-pas complet (installation Docker, secrets, migrations, Nginx, TLS) — écrit
-spécifiquement pour un déploiement sur un VPS type Hostinger.
+**Chemin VPS + Docker (celui documenté et vérifié dans ce dépôt)** : le code source complet vit sur GitHub ; le VPS,
+lui, ne manipule que des images pré-construites — `.github/workflows/backend-image.yml` construit
+`apps/backend/Dockerfile` (build multi-stage, n'installe que la dépendance de workspace de `apps/backend`, testé
+avec `npm ci --workspace=apps/backend` et `nest build` dans ce sandbox) et le pousse vers GitHub Container Registry
+à chaque push sur `main`. Le VPS exécute seulement `docker compose pull && up` (via `docker-compose.yml` à la
+racine, backend + PostgreSQL) — jamais de build ni de toolchain Node sur le serveur de production. Voir
+**`docs/GUIDE_VPS.md`** pour le pas-à-pas complet (installation Docker, authentification GHCR, secrets, migrations,
+Nginx, TLS) — écrit spécifiquement pour un déploiement sur un VPS type Hostinger.
 
 ### HTTPS et sécurité réseau
 

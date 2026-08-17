@@ -5,6 +5,14 @@ chez Hostinger) et le dépôt GitHub `noealexiscamara-stack/Infinistream`. Il co
 Nginx + Let's Encrypt**, qui est celui pour lequel `docker-compose.yml`, `apps/backend/Dockerfile` et
 `deploy/nginx/infiny-stream.conf` ont été écrits et vérifiés dans ce dépôt.
 
+**Approche retenue : le code entier vit sur GitHub, le VPS ne manipule que des images.** `apps/backend/Dockerfile`
+est construit par `.github/workflows/backend-image.yml` (GitHub Actions) à chaque push sur `main` qui touche le
+backend, et poussé vers GitHub Container Registry (`ghcr.io`). Le VPS ne clone le dépôt que pour récupérer les
+fichiers de configuration légers (`docker-compose.yml`, `deploy/nginx/...`) — il ne lance jamais `npm ci` ni
+`nest build` lui-même, seulement `docker compose pull` puis `up`. Ça évite complètement le problème rencontré en
+développant ce projet (le registre Docker Hub était bloqué dans le sandbox de développement) et ça garde le VPS
+propre : pas de Node.js à y maintenir, juste Docker.
+
 Tout ce qui suit s'exécute **sur le VPS**, via SSH — ni moi (Claude) ni cette session cloud n'avons d'accès direct à
 votre VPS ; copiez/collez ces commandes dans votre propre terminal SSH.
 
@@ -34,6 +42,10 @@ docker compose version
 
 ## 3. Cloner le dépôt
 
+Le VPS n'a besoin que des fichiers de configuration (`docker-compose.yml`, `deploy/nginx/`, les guides) — le clone
+complet reste petit (pas de `node_modules`) donc autant garder tout le dépôt, mais aucune commande `npm`/`nest`
+n'y sera jamais lancée :
+
 ```bash
 mkdir -p /opt/infiny-stream
 git clone https://github.com/noealexiscamara-stack/Infinistream.git /opt/infiny-stream
@@ -52,10 +64,27 @@ nano .env.production    # collez les deux secrets + un mot de passe DB fort dans
 `.env.production` n'est jamais commité (il est dans `.gitignore`) — c'est normal et voulu, ces secrets ne doivent
 exister que sur ce serveur.
 
-## 5. Démarrer Postgres + le backend
+## 5. Récupérer l'image et démarrer Postgres + le backend
+
+**Préalable** : l'image doit exister sur GHCR avant de pouvoir la tirer. Si vous venez de pousser le code sur
+GitHub pour la première fois, ouvrez l'onglet **Actions** du dépôt et attendez que le workflow "Build & push
+backend image" se termine (quelques minutes) avant de continuer ici.
+
+Par défaut, le paquet GHCR créé par un premier push est **privé** — le VPS doit s'authentifier pour le tirer, avec
+un token GitHub à droits `read:packages` uniquement (créez-le sur
+[github.com/settings/tokens](https://github.com/settings/tokens?type=beta), scope minimal) :
 
 ```bash
-docker compose --env-file .env.production up -d --build
+echo VOTRE_TOKEN_GITHUB | docker login ghcr.io -u noealexiscamara-stack --password-stdin
+```
+
+(Alternative : rendre le paquet public depuis l'onglet Packages du dépôt GitHub, une fois qu'il existe — évite
+d'avoir à gérer un token sur le VPS, acceptable ici puisque l'image ne contient aucun secret, seulement du code
+compilé.)
+
+```bash
+docker compose --env-file .env.production pull
+docker compose --env-file .env.production up -d
 docker compose ps        # les deux services doivent être "running"/"healthy"
 docker compose logs -f backend   # Ctrl+C pour quitter les logs une fois "listening on :3000" vu
 ```
@@ -124,12 +153,20 @@ accessible à `https://api.infinystream.app/admin/`, connectez-vous avec ce comp
 
 ## 10. Mises à jour ultérieures
 
+Un push sur `main` qui touche `apps/backend/` déclenche automatiquement le workflow GitHub Actions qui reconstruit
+et pousse une nouvelle image `:latest` — le VPS n'a plus qu'à la retirer :
+
 ```bash
 cd /opt/infiny-stream
-git pull
-docker compose --env-file .env.production up -d --build
+git pull   # récupère d'éventuels changements de docker-compose.yml / nginx / migrations
+docker compose --env-file .env.production pull
+docker compose --env-file .env.production up -d
 # si une nouvelle migration a été ajoutée dans src/migrations/, répétez la commande de l'étape 6
 ```
+
+Pour un déploiement reproductible plutôt que de toujours suivre `:latest` (utile une fois en production réelle,
+pour pouvoir revenir en arrière précisément) : fixez `IMAGE_TAG=<sha du commit>` dans `.env.production` — chaque
+build CI pousse aussi un tag nommé par le SHA du commit, visible dans l'onglet Actions ou Packages du dépôt.
 
 ## Dimensionnement
 

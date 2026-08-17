@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+.git
+.expo
+apps/mobile/android
+apps/mobile/ios
+apps/backend/dist
+**/dist
+*.log
+coverage
+.turbo
+.env
+.env.production
+.env.production.example
