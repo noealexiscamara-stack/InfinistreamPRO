@@ -1,0 +1,16 @@
+node_modules/
+.expo/
+dist/
+build/
+android/app/build/
+ios/build/
+*.log
+.env
+.env.local
+.DS_Store
+coverage/
+.turbo/
+apps/backend/dist/
+.env.production
+apps/backend/.env
+data/postgres/

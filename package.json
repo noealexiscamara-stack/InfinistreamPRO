@@ -1,0 +1,19 @@
+{
+  "name": "infiny-stream",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Infiny Stream — le streaming qui s'adapte à votre connexion.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "mobile": "npm run start --workspace=apps/mobile",
+    "backend": "npm run start:dev --workspace=apps/backend",
+    "test:shared": "npm run test --workspace=packages/shared",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

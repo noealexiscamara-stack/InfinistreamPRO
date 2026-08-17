@@ -1,0 +1,108 @@
+# Limitations connues
+
+Document honnête de ce qui **n'est pas fait**, ce qui **n'a pas pu être testé dans cet environnement**, et ce qui
+reste à faire avant une mise en production. À lire avant de considérer une fonctionnalité "terminée" — conformément
+à la règle produit #57 : *"Ne considère jamais une fonctionnalité terminée simplement parce que le code compile."*
+
+## Contrainte d'environnement (pourquoi ces limites existent)
+
+Cette passe de développement s'est déroulée dans un sandbox cloud **sans SDK Android, sans émulateur, sans écran**.
+Concrètement :
+
+- `ANDROID_HOME` n'est pas configuré, aucun `sdkmanager`/`adb` n'est installé.
+- Pas d'affichage (headless) : impossible de lancer un émulateur Android même en installant le SDK.
+- Le backend NestJS, lui, **a pu être testé en conditions réelles** (PostgreSQL local disponible dans ce sandbox) —
+  voir README.md pour le détail des appels HTTP vérifiés.
+
+Ce qui suit distingue donc "écrit et raisonné avec soin" de "vérifié en exécution réelle".
+
+## 1. Lecture vidéo réelle — NON TESTÉE EN EXÉCUTION
+
+`apps/mobile/src/services/playback/PlayerController.ts` et l'écran `app/player/[channelId].tsx` pilotent un vrai
+`VideoPlayer` `expo-video` (Media3 sur Android). Le code compile et son raisonnement est documenté en commentaires,
+mais **rien ici n'a pu être exécuté sur un appareil ou un émulateur** :
+
+- Lecture effective d'un flux HLS/TS réel.
+- Détection de stall/erreur via les événements `statusChange` d'expo-video — le nom exact des événements et leur
+  comportement doivent être revérifiés contre la version installée (`expo-video ~57.0.2`) sur un appareil réel.
+- Changement de rendition en direct (`player.replace()`) sans interruption visible excessive.
+- Reconnexion automatique après coupure réseau réelle (Wi-Fi→4G, perte totale, latence élevée).
+- Chromecast (mentionné en fonctionnalité Premium optionnelle, non implémenté du tout).
+
+**Prochaine étape recommandée** : `expo prebuild` + build de développement (`eas build --profile development` ou
+Android Studio local) puis test manuel sur un appareil bas de gamme réel avec un flux IPTV légitime, en suivant la
+matrice de tests réseau du cahier des charges (Wi-Fi excellent/moyen/faible, 3G/4G divers, perte/latence).
+
+## 2. Mesure fine du débit réseau — approximation documentée
+
+`AdaptiveStreamingManager` et son estimateur (`ThroughputEstimator`) sont testés unitairement (43 tests) avec des
+échantillons simulés, et l'algorithme de décision (hystérésis, paliers, modes) est solide. Ce qui manque : une
+source de mesure **par segment vidéo réel**. `expo-video` n'expose pas aujourd'hui le `BandwidthMeter` interne de
+Media3 côté JS. La mesure actuelle s'appuie sur :
+
+- le chronométrage du téléchargement du manifeste (une mesure par chargement de chaîne) ;
+- la détection de rebuffering comme signal fort de dégradation.
+
+**Prochaine étape recommandée** : un petit module natif Expo (Kotlin) qui expose les événements de
+`AnalyticsListener`/`BandwidthMeter` de Media3 au JS, pour un signal continu au lieu d'un point de mesure par
+chargement.
+
+## 3. Android TV — manifeste patché, focus non testé
+
+Le config plugin `apps/mobile/plugins/withAndroidTv.js` ajoute `LEANBACK_LAUNCHER` et `android:banner` au manifeste
+généré. Non fait / non testé :
+
+- Le drawable `@drawable/tv_banner` référencé par le plugin **n'existe pas encore** — à fournir (image 320×180)
+  avant un premier build TV, sinon le build natif échouera à la résolution de ressource.
+- Navigation D-pad et style de focus visuel sur les listes/boutons (le style `pressed` actuel des composants suppose
+  une interaction tactile ; un vrai passage TV doit ajouter `focusable`/`hasTVPreferredFocus` et un style de focus
+  visible, non fait dans cette passe).
+- Aucun test sur émulateur/téléviseur Android TV réel n'a pu être effectué (pas d'émulateur disponible ici).
+
+## 4. Paiements — stubs structurels, aucune intégration réelle
+
+`OrangeMoneyProvider`, `MtnMomoProvider`, `HoloPayProvider` (`apps/backend/src/payments/providers/`) suivent la
+forme attendue (initiate → redirectUrl, verifyWebhook → statut) mais **aucun appel réseau réel n'est implémenté** :
+aucun des trois n'a de documentation d'API/credentials marchand disponible dans cet environnement. Chaque stub lève
+une erreur explicite (503) plutôt que de simuler un succès silencieux — pour ne jamais laisser croire qu'un paiement
+a réussi alors qu'il n'a pas été traité.
+
+**Prochaine étape recommandée** : obtenir les identifiants marchand + documentation API de chaque fournisseur,
+implémenter `initiate()`/`verifyWebhook()` sans changer l'interface `PaymentProviderAdapter` ni `PaymentsService`.
+
+## 5. Notifications push — stub qui journalise seulement
+
+`NotificationsService` (`apps/backend/src/notifications/`) journalise ce qu'il enverrait ("abonnement expire
+bientôt", etc.) sans jamais réellement notifier — pas d'intégration FCM/APNs, pas de gestion de token push côté
+mobile. Prochaine étape : `expo-notifications` côté mobile + un provider FCM/APNs côté serveur.
+
+## 6. Dashboard admin — un seul écran (KPI), pas de gestion détaillée
+
+`apps/admin/index.html` est une page unique fonctionnelle (connexion + KPI de `GET /admin/dashboard`, vérifiée via
+les mêmes appels HTTP que le reste du backend). Le cahier des charges section 47 demande aussi des écrans
+Utilisateurs / Abonnements / Paiements / Configuration détaillés — **les endpoints n'existent pas encore côté
+backend** (seul `/admin/dashboard` a été implémenté), et il n'y a pas d'écran dédié pour les créer/modifier.
+
+## 7. Génération d'APK — non réalisable dans ce sandbox
+
+Aucun APK (debug ou release) n'a été généré : cela nécessite le SDK Android (absent ici) ou un service de build cloud
+comme EAS Build. Voir `docs/GUIDE_BUILD.md` pour la marche à suivre une fois hors de ce sandbox.
+
+## 8. Compte utilisateur côté mobile — pas encore connecté au backend
+
+Les écrans `app/account` et `app/subscription` du mobile affichent un état **local uniquement** (essai de 30 jours
+suivi par MMKV, aucun appel réseau vers `apps/backend`). Le backend expose déjà `/auth/register`, `/auth/login`,
+`/subscriptions/me`, `/devices`, `/payments/initiate` — le câblage mobile↔backend (écran de connexion/inscription,
+stockage sécurisé du token JWT, appel réel à `/subscriptions/me` au démarrage plutôt que la classe `localTrial.ts`)
+reste à faire. C'est indiqué explicitement dans `services/subscription/localTrial.ts`.
+
+## 9. Ce qui a été vérifié à l'exécution (pour équilibrer le tableau)
+
+- **43/43 tests unitaires verts** sur `packages/shared` (parser M3U, client Xtream, parser EPG XMLTV, parser HLS,
+  estimateur de débit, `AdaptiveStreamingManager` — y compris le test anti-oscillation 720p/480p).
+- **`tsc --noEmit` sans erreur** sur `packages/types`, `packages/shared`, `packages/config`, `apps/mobile`,
+  `apps/backend`.
+- **Backend démarré contre une vraie base PostgreSQL** dans ce sandbox, et testé par de vraies requêtes HTTP :
+  inscription (avec essai gratuit auto-créé), connexion, exclusion du hash de mot de passe des réponses, limite
+  d'appareils (403 au 3ᵉ appareil avec une limite à 2), garde admin (403 sans le rôle, 200 avec), stub de paiement
+  (503 explicite), ingestion d'un événement analytics, calcul des KPI admin.
