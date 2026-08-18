@@ -7,4 +7,7 @@ export * from './network/estimator';
 export * from './network/quality';
 export * from './playback/AdaptiveStreamingManager';
 export * from './playback/qualityModeProfiles';
+export * from './playback/ChannelTierSwitcher';
+export * from './channels/qualityMarkers';
+export * from './channels/groupChannels';
 export * from './utils/id';

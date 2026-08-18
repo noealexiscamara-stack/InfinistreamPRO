@@ -65,6 +65,51 @@ Voir `packages/shared/src/playback/AdaptiveStreamingManager.ts` et son fichier d
 - **Cooldown** entre deux changements, sauf appel explicite `forceImmediate` (utilisé pour les stalls et les
   changements de mode utilisateur, qui doivent être immédiats).
 
+## 4bis. Reconstruire un palier de qualité quand la source n'en déclare aucun
+
+C'est la réponse au cas le plus fréquent en Afrique de l'Ouest (et sur beaucoup de fournisseurs bas de gamme) : le
+flux n'est pas adaptatif du tout, mais le fournisseur livre la même chaîne en plusieurs entrées M3U indépendantes —
+`TF1 SD`, `TF1 HD`, `TF1 FHD`. Un lecteur classique affiche trois chaînes distinctes et ne peut jamais s'adapter.
+
+`packages/shared/src/channels/` reconstruit l'échelle :
+
+- `qualityMarkers.ts` lit le suffixe de qualité dans le nom (SD/HD/FHD/UHD/4K/1080p/LQ/HQ, formes entre crochets ou
+  parenthèses, séparateurs variés). Deux règles de prudence volontaires, parce qu'une fusion abusive fait
+  *disparaître* une chaîne de la liste — bien pire qu'un regroupement manqué : un marqueur nu n'est retiré qu'en
+  **fin** de nom (`TF1 HD` → `TF1`, mais `Discovery HD Showcase` et `HDNet` sont laissés intacts), et un nombre nu
+  n'est **jamais** lu comme une résolution (`beIN Sports 1`, `Canal+ Sport 360` restent entiers).
+- `groupChannels.ts` regroupe ensuite par nom normalisé, puis re-sépare par `tvg-id` (même nom + `tvg-id` différent =
+  flux régionaux différents, ex. `TF1.fr` vs `TF1.be`). Invariant testé : **aucune chaîne n'est jamais perdue** —
+  la somme des paliers + les doublons exacts d'URL égale toujours le nombre d'entrées en entrée. Deux entrées au
+  *même* palier sont conservées toutes les deux : ce sont des URL de secours sur un autre serveur, ce qui est un
+  vrai gain de robustesse quand une origine tombe.
+
+## 4ter. Deux boucles d'adaptation, pas une
+
+Une fois l'échelle reconstruite, il y a deux niveaux d'adaptation, avec des coûts très différents :
+
+| | Boucle interne | Boucle externe |
+|---|---|---|
+| Classe | `AdaptiveStreamingManager` | `ChannelTierSwitcher` |
+| Change quoi | un rendu à l'intérieur d'un même flux HLS | l'URL du flux entièrement |
+| Coût d'un changement | transparent | reconnexion, ~1-2 s d'écran noir |
+| Rythme | quelques secondes | dizaines de secondes |
+
+`ChannelTierSwitcher` est donc réglé bien plus prudemment (`DEFAULT_TIER_SWITCH_CONFIG` : 20 s de maintien minimum,
+90 s de débit confortable avant de monter). Trois choix spécifiquement pensés pour une connexion instable :
+
+- **Asymétrie descente/montée.** Se tromper en descendant coûte une image un peu plus douce ; se tromper en montant
+  coûte un stall *puis* une seconde reconnexion pour redescendre. La descente est donc rapide, la montée doit faire
+  ses preuves.
+- **Mémoire des échecs.** Chaque fois qu'un palier nous a lâchés, le temps de stabilité exigé pour y revenir
+  augmente (`demotionPenaltyMs`, plafonné). Une connexion qui oscille converge vers un palier tenable au lieu de
+  faire l'ascenseur.
+- **Première correction immédiate.** Le palier d'ouverture n'est qu'une supposition : le cooldown ne s'applique
+  qu'à partir du *premier* changement, pour ne pas imposer 20 s de stall au démarrage.
+
+Enfin, `reportTierDead()` distingue un flux **mort** (404, timeout, codec) d'un flux **lent** : on bascule d'abord
+sur une autre URL du même palier avant de sacrifier de la qualité.
+
 ## 5. Stockage local : SQLite (relationnel, volumineux) + MMKV (clé/valeur, réglages)
 
 Les chaînes d'une playlist peuvent se compter en milliers ; elles vivent dans SQLite (`apps/mobile/src/utils/db.ts`)

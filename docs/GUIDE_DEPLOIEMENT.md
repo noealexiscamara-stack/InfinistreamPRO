@@ -1,5 +1,15 @@
 # Guide de déploiement
 
+## Répartition du travail
+
+Backend/infra (ce dépôt côté `apps/backend`, VPS, déploiement) : Claude. Frontend (`apps/mobile`) : Cursor. Éviter
+de dupliquer ou modifier `apps/mobile` depuis une session Claude sans coordination avec ce qui a été fait côté
+Cursor — se concentrer sur le backend, l'infra et la documentation qui les concerne.
+
+Le câblage auth/abonnement mobile ↔ backend a été fait côté Cursor (commit `84454e1`) : écrans login/register,
+JWT en `expo-secure-store`, `GET /subscriptions/me` remplace l'ancien suivi local, `GET /config` au bootstrap,
+logout automatique sur 401. Voir la fiche du projet Claude pour le détail.
+
 ## Backend
 
 ### Base de données
