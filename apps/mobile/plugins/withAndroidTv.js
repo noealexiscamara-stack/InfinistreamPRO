@@ -11,14 +11,18 @@
  *    (false = app also installs on regular phones/tablets)
  *  - <uses-feature android.hardware.touchscreen required="false" />
  *  - adds android:banner + LEANBACK_LAUNCHER category on the main activity
+ *  - copies assets/images/tv_banner.png -> res/drawable/tv_banner.png
  *
  * This only takes effect on a native build (EAS Build or local
  * `expo prebuild` + Gradle/Android SDK) — it cannot be verified inside a
  * plain JS/Metro sandbox with no Android SDK.
  */
-const { withAndroidManifest } = require('@expo/config-plugins');
+const fs = require('fs');
+const path = require('path');
+const { withAndroidManifest, withDangerousMod } = require('@expo/config-plugins');
 
 const BANNER_DRAWABLE = '@drawable/tv_banner';
+const BANNER_SOURCE = path.join('assets', 'images', 'tv_banner.png');
 
 function ensureUsesFeature(manifest, name, required) {
   manifest.manifest['uses-feature'] = manifest.manifest['uses-feature'] || [];
@@ -31,7 +35,7 @@ function ensureUsesFeature(manifest, name, required) {
   list.push({ $: { 'android:name': name, 'android:required': String(required) } });
 }
 
-function withAndroidTv(config) {
+function withAndroidTvManifest(config) {
   return withAndroidManifest(config, (config) => {
     const manifest = config.modResults;
 
@@ -66,6 +70,32 @@ function withAndroidTv(config) {
 
     return config;
   });
+}
+
+function withAndroidTvBannerAsset(config) {
+  return withDangerousMod(config, [
+    'android',
+    async (config) => {
+      const projectRoot = config.modRequest.projectRoot;
+      const source = path.join(projectRoot, BANNER_SOURCE);
+      if (!fs.existsSync(source)) {
+        throw new Error(
+          `Missing Android TV banner asset at ${BANNER_SOURCE}. Add a 320x180 PNG before building.`
+        );
+      }
+
+      const destDir = path.join(config.modRequest.platformProjectRoot, 'app/src/main/res/drawable');
+      fs.mkdirSync(destDir, { recursive: true });
+      fs.copyFileSync(source, path.join(destDir, 'tv_banner.png'));
+      return config;
+    },
+  ]);
+}
+
+function withAndroidTv(config) {
+  config = withAndroidTvBannerAsset(config);
+  config = withAndroidTvManifest(config);
+  return config;
 }
 
 module.exports = withAndroidTv;
