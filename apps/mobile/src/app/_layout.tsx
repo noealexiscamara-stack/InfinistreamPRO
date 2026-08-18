@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
@@ -11,6 +11,9 @@ import { useSourcesStore } from '@/store/useSourcesStore';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
 import { useHistoryStore } from '@/store/useHistoryStore';
 import { useNetworkMonitorBootstrap } from '@/store/useNetworkStore';
+import { useAuthStore, handleUnauthorizedSession } from '@/store/useAuthStore';
+import { useConfigStore } from '@/store/useConfigStore';
+import { setUnauthorizedHandler } from '@/services/api/unauthorizedHandler';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   /* no-op: fine if it was already hidden */
@@ -20,12 +23,22 @@ export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
   useNetworkMonitorBootstrap();
 
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      void handleUnauthorizedSession().finally(() => {
+        router.replace('/login');
+      });
+    });
+  }, []);
+
   const bootstrap = useCallback(async () => {
     await getDatabase();
     await Promise.all([
       useSourcesStore.getState().load(),
       useFavoritesStore.getState().load(),
       useHistoryStore.getState().load(),
+      useConfigStore.getState().refresh(),
+      useAuthStore.getState().hydrate(),
     ]);
     setIsReady(true);
   }, []);
@@ -35,9 +48,6 @@ export default function RootLayout() {
   }, [bootstrap]);
 
   if (!isReady) {
-    // The native splash screen (app.json > expo-splash-screen) is still
-    // visible at this point — see product rule #9: never block longer
-    // than necessary. DB init + local reads are fast (no network call).
     return <View style={{ flex: 1, backgroundColor: colors.background }} />;
   }
 
@@ -53,6 +63,8 @@ export default function RootLayout() {
       >
         <Stack.Screen name="index" />
         <Stack.Screen name="onboarding/index" />
+        <Stack.Screen name="login" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="register" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="player/[channelId]" options={{ animation: 'fade', presentation: 'fullScreenModal' }} />
         <Stack.Screen name="add-source/index" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
