@@ -5,8 +5,9 @@ import { router } from 'expo-router';
 import { colors, spacing, typography } from '@/theme/tokens';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
+import { ImportErrorBanner } from '@/components/ui/ImportErrorBanner';
 import { useSourcesStore } from '@/store/useSourcesStore';
-import { friendlyImportError } from '@/utils/friendlyErrors';
+import { describeImportError, type FriendlyImportErrorInfo } from '@/utils/friendlyErrors';
 import type { ImportProgress } from '@/services/m3u/importM3u';
 
 function progressLabel(progress: ImportProgress | null): string {
@@ -19,21 +20,23 @@ function progressLabel(progress: ImportProgress | null): string {
 export default function AddM3uUrlScreen() {
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FriendlyImportErrorInfo | null>(null);
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const addM3uUrl = useSourcesStore((s) => s.addM3uUrl);
 
   const isLoading = progress !== null;
-  const canSubmit = url.trim().length > 0 && /^https?:\/\//i.test(url.trim());
+  const trimmedUrl = url.trim();
+  const canSubmit = trimmedUrl.length > 0 && /^https?:\/\//i.test(trimmedUrl);
 
   async function handleSubmit() {
+    if (!canSubmit) return;
     setError(null);
     setProgress({ phase: 'downloading' });
     try {
-      await addM3uUrl(name.trim() || 'Ma playlist', url.trim(), setProgress);
+      await addM3uUrl(name.trim() || 'Ma playlist', trimmedUrl, setProgress);
       router.replace('/(tabs)/home');
     } catch (err) {
-      setError(friendlyImportError(err));
+      setError(describeImportError(err, { url: trimmedUrl }));
       setProgress(null);
     }
   }
@@ -49,14 +52,18 @@ export default function AddM3uUrlScreen() {
           label="URL de la playlist"
           placeholder="https://…"
           value={url}
-          onChangeText={setUrl}
+          onChangeText={(value) => {
+            setUrl(value);
+            if (error) setError(null);
+          }}
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
           editable={!isLoading}
-          error={error ?? undefined}
         />
       </View>
+
+      {error && <ImportErrorBanner error={error} onRetry={handleSubmit} retryDisabled={isLoading || !canSubmit} />}
 
       {isLoading && <Text style={styles.progress}>{progressLabel(progress)}</Text>}
 

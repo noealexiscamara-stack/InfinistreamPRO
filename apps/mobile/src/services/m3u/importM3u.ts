@@ -16,21 +16,67 @@ export interface ImportResult {
   warnings: string[];
 }
 
+export class M3uImportError extends Error {
+  readonly title: string;
+  readonly causeLabel: string;
+
+  constructor(title: string, causeLabel: string) {
+    super(`${title} — ${causeLabel}`);
+    this.name = 'M3uImportError';
+    this.title = title;
+    this.causeLabel = causeLabel;
+  }
+}
+
+function httpStatusCause(status: number): string {
+  if (status === 401 || status === 403) return 'Accès refusé';
+  if (status === 404) return 'Playlist introuvable';
+  if (status >= 500) return 'Erreur serveur';
+  return `HTTP ${status}`;
+}
+
+function downloadCause(err: unknown, url: string): string {
+  const message = err instanceof Error ? err.message.toLowerCase() : '';
+  if (/timeout|timed out|aborted/.test(message)) return 'Délai dépassé';
+  if (url.toLowerCase().startsWith('http://') && /network request failed|failed to fetch|cleartext/.test(message)) {
+    return 'HTTP en clair bloqué';
+  }
+  if (/network request failed|failed to fetch|network error/.test(message)) return 'Connexion impossible';
+  return 'Le serveur n’a pas répondu';
+}
+
+async function downloadPlaylist(url: string): Promise<string> {
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch (err) {
+    throw new M3uImportError('Impossible de télécharger la playlist', downloadCause(err, url));
+  }
+  if (!response.ok) {
+    throw new M3uImportError('Impossible de télécharger la playlist', httpStatusCause(response.status));
+  }
+  try {
+    return await response.text();
+  } catch {
+    throw new M3uImportError('Impossible de télécharger la playlist', 'Réponse illisible');
+  }
+}
+
 async function readSourceContent(
   source: M3uUrlSource | M3uFileSource,
   onProgress?: (p: ImportProgress) => void
 ): Promise<string> {
   if (source.type === 'm3u_url') {
     onProgress?.({ phase: 'downloading' });
-    const response = await fetch(source.url);
-    if (!response.ok) {
-      throw new Error(`Impossible de télécharger la playlist (HTTP ${response.status})`);
-    }
-    return response.text();
+    return downloadPlaylist(source.url);
   }
 
   onProgress?.({ phase: 'downloading' });
-  return FileSystem.readAsStringAsync(source.fileUri);
+  try {
+    return await FileSystem.readAsStringAsync(source.fileUri);
+  } catch {
+    throw new M3uImportError('Impossible de lire le fichier', 'Fichier inaccessible');
+  }
 }
 
 /**
@@ -45,10 +91,19 @@ export async function importM3uSource(
   const content = await readSourceContent(source, onProgress);
 
   onProgress?.({ phase: 'parsing' });
-  const parsed = await parseM3u(content, {
-    chunkSize: M3U_PARSE_CHUNK_SIZE,
-    onProgress: (parsedCount) => onProgress?.({ phase: 'parsing', parsedCount }),
-  });
+  let parsed;
+  try {
+    parsed = await parseM3u(content, {
+      chunkSize: M3U_PARSE_CHUNK_SIZE,
+      onProgress: (parsedCount) => onProgress?.({ phase: 'parsing', parsedCount }),
+    });
+  } catch {
+    throw new M3uImportError('Impossible d’analyser la playlist', 'Format non reconnu');
+  }
+
+  if (parsed.channels.length === 0) {
+    throw new M3uImportError('Impossible d’analyser la playlist', 'Aucune chaîne trouvée');
+  }
 
   onProgress?.({ phase: 'saving' });
   await replaceSourceChannels(source.id, parsed.channels);

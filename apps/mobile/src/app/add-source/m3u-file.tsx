@@ -4,18 +4,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, spacing, typography } from '@/theme/tokens';
+import { colors, spacing, typography } from '@/theme/tokens';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { useSourcesStore } from '@/store/useSourcesStore';
-import { friendlyImportError } from '@/utils/friendlyErrors';
+import { describeImportError, type FriendlyImportErrorInfo } from '@/utils/friendlyErrors';
+import { ImportErrorBanner } from '@/components/ui/ImportErrorBanner';
 import type { ImportProgress } from '@/services/m3u/importM3u';
 
 export default function AddM3uFileScreen() {
   const [name, setName] = useState('');
   const [pickedFile, setPickedFile] = useState<{ uri: string; name: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FriendlyImportErrorInfo | null>(null);
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const addM3uFile = useSourcesStore((s) => s.addM3uFile);
 
@@ -41,7 +42,7 @@ export default function AddM3uFileScreen() {
       await addM3uFile(name.trim() || pickedFile.name, pickedFile.uri, setProgress);
       router.replace('/(tabs)/home');
     } catch (err) {
-      setError(friendlyImportError(err));
+      setError(describeImportError(err));
       setProgress(null);
     }
   }
@@ -60,7 +61,7 @@ export default function AddM3uFileScreen() {
         <TextField label="Nom (optionnel)" placeholder="Ma TV" value={name} onChangeText={setName} editable={!isLoading} />
       </View>
 
-      {!!error && <Text style={styles.error}>{error}</Text>}
+      {error && <ImportErrorBanner error={error} onRetry={handleSubmit} retryDisabled={isLoading || !pickedFile} />}
 
       <Button label="Ajouter" onPress={handleSubmit} disabled={!pickedFile} loading={isLoading} />
     </SafeAreaView>
@@ -74,5 +75,4 @@ const styles = StyleSheet.create({
   picker: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xl, borderStyle: 'dashed' as const },
   pickerLabel: { ...typography.bodyStrong, color: colors.textPrimary },
   form: { gap: spacing.md },
-  error: { ...typography.caption, color: colors.danger, textAlign: 'center' },
 });

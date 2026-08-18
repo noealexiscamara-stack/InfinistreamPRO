@@ -5,28 +5,30 @@ import { router } from 'expo-router';
 import { colors, spacing, typography } from '@/theme/tokens';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
+import { ImportErrorBanner } from '@/components/ui/ImportErrorBanner';
 import { useSourcesStore } from '@/store/useSourcesStore';
-import { friendlyImportError } from '@/utils/friendlyErrors';
+import { describeImportError, type FriendlyImportErrorInfo } from '@/utils/friendlyErrors';
 
 export default function AddXtreamScreen() {
   const [name, setName] = useState('');
   const [serverUrl, setServerUrl] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FriendlyImportErrorInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const addXtream = useSourcesStore((s) => s.addXtream);
 
   const canSubmit = serverUrl.trim().length > 0 && username.trim().length > 0 && password.length > 0;
 
   async function handleSubmit() {
+    if (!canSubmit) return;
     setError(null);
     setIsLoading(true);
     try {
       await addXtream(name.trim() || 'Xtream', serverUrl.trim(), username.trim(), password);
       router.replace('/(tabs)/home');
     } catch (err) {
-      setError(friendlyImportError(err));
+      setError(describeImportError(err, { url: serverUrl.trim() }));
     } finally {
       setIsLoading(false);
     }
@@ -43,7 +45,10 @@ export default function AddXtreamScreen() {
           label="URL du serveur"
           placeholder="http://serveur.exemple.com:8080"
           value={serverUrl}
-          onChangeText={setServerUrl}
+          onChangeText={(value) => {
+            setServerUrl(value);
+            if (error) setError(null);
+          }}
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
@@ -57,8 +62,10 @@ export default function AddXtreamScreen() {
           autoCorrect={false}
           editable={!isLoading}
         />
-        <TextField label="Mot de passe" value={password} onChangeText={setPassword} secureTextEntry editable={!isLoading} error={error ?? undefined} />
+        <TextField label="Mot de passe" value={password} onChangeText={setPassword} secureTextEntry editable={!isLoading} />
       </View>
+
+      {error && <ImportErrorBanner error={error} onRetry={handleSubmit} retryDisabled={isLoading || !canSubmit} />}
 
       <Button label="Se connecter" onPress={handleSubmit} disabled={!canSubmit} loading={isLoading} />
     </SafeAreaView>

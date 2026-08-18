@@ -1,28 +1,53 @@
+import { M3uImportError } from '@/services/m3u/importM3u';
 import { XtreamConnectionError } from '@/services/xtream/importXtream';
 
+export interface FriendlyImportErrorInfo {
+  title: string;
+  cause: string;
+}
+
+function fallbackDownloadCause(err: unknown, url?: string): string {
+  const message = err instanceof Error ? err.message.toLowerCase() : '';
+  const isHttp = (url ?? '').toLowerCase().startsWith('http://');
+  if (/timeout|timed out|aborted/.test(message)) return 'Délai dépassé';
+  if (isHttp && /network request failed|failed to fetch|cleartext/.test(message)) {
+    return 'HTTP en clair bloqué';
+  }
+  if (/network request failed|failed to fetch|network error/.test(message)) {
+    return 'Connexion impossible';
+  }
+  return 'Le serveur n’a pas répondu';
+}
+
+function xtreamCause(err: XtreamConnectionError, url?: string): string {
+  if (err.kind === 'network' && (url ?? '').toLowerCase().startsWith('http://')) {
+    return 'HTTP en clair bloqué';
+  }
+  return err.causeLabel;
+}
+
 /**
- * Maps internal/technical errors to the short, non-technical messages the
- * product spec requires (rule #30: never show a raw exception). Kept in
- * one place so every screen that imports/connects a source says the same
- * thing for the same failure.
+ * Maps internal/technical errors to a short, non-technical title + cause.
+ * Never returns a raw exception string (product rule #30).
  */
-export function friendlyImportError(err: unknown): string {
+export function describeImportError(err: unknown, context?: { url?: string }): FriendlyImportErrorInfo {
+  if (err instanceof M3uImportError) {
+    return { title: err.title, cause: err.causeLabel };
+  }
+
   if (err instanceof XtreamConnectionError) {
-    switch (err.kind) {
-      case 'invalid_credentials':
-        return err.message || 'Identifiants incorrects. Vérifiez le serveur, le nom d’utilisateur et le mot de passe.';
-      case 'network':
-        return 'Impossible de contacter ce serveur. Vérifiez votre connexion.';
-      case 'server_error':
-        return 'Le serveur a rencontré un problème. Réessayez plus tard.';
-      case 'malformed_response':
-        return "Réponse du serveur inattendue. Vérifiez l'adresse du serveur.";
-    }
+    return { title: err.title, cause: xtreamCause(err, context?.url) };
   }
 
-  if (err instanceof TypeError && /network/i.test(err.message)) {
-    return 'Impossible de télécharger cette playlist. Vérifiez votre connexion et le lien.';
+  if (err instanceof TypeError && /network|fetch/i.test(err.message)) {
+    return {
+      title: 'Impossible de télécharger la playlist',
+      cause: fallbackDownloadCause(err, context?.url),
+    };
   }
 
-  return "Impossible d'ajouter cette source pour le moment. Vérifiez les informations saisies et réessayez.";
+  return {
+    title: 'Impossible d’ajouter cette source',
+    cause: 'Vérifiez les informations saisies',
+  };
 }

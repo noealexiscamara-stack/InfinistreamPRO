@@ -7,13 +7,36 @@ export interface XtreamImportResult {
   auth: XtreamAuthInfo;
 }
 
+const XTREAM_TITLE = 'Impossible de se connecter au serveur Xtream';
+
+function xtreamCauseForKind(
+  kind: 'network' | 'invalid_credentials' | 'server_error' | 'malformed_response',
+  fallback?: string
+): string {
+  switch (kind) {
+    case 'invalid_credentials':
+      return fallback || 'Identifiants incorrects';
+    case 'network':
+      return 'Connexion impossible';
+    case 'server_error':
+      return 'Le serveur a rencontré un problème';
+    case 'malformed_response':
+      return 'Réponse inattendue';
+  }
+}
+
 export class XtreamConnectionError extends Error {
+  readonly title = XTREAM_TITLE;
+  readonly causeLabel: string;
+
   constructor(
-    message: string,
-    public readonly kind: 'network' | 'invalid_credentials' | 'server_error' | 'malformed_response'
+    public readonly kind: 'network' | 'invalid_credentials' | 'server_error' | 'malformed_response',
+    causeLabel?: string
   ) {
-    super(message);
+    const cause = xtreamCauseForKind(kind, causeLabel);
+    super(`${XTREAM_TITLE} — ${cause}`);
     this.name = 'XtreamConnectionError';
+    this.causeLabel = cause;
   }
 }
 
@@ -28,12 +51,12 @@ export async function verifyXtreamCredentials(
   const client = clientFor(credentials);
   const result = await client.authenticate();
   if (!result.ok) {
-    throw new XtreamConnectionError(result.message, result.error);
+    throw new XtreamConnectionError(result.error);
   }
   if (result.data.status !== 'ok') {
     throw new XtreamConnectionError(
-      result.data.status === 'expired' ? 'Abonnement Xtream expiré.' : 'Compte Xtream désactivé.',
-      'invalid_credentials'
+      'invalid_credentials',
+      result.data.status === 'expired' ? 'Abonnement Xtream expiré' : 'Compte Xtream désactivé'
     );
   }
   return result.data;
@@ -52,13 +75,13 @@ export async function importXtreamSource(source: XtreamSource): Promise<XtreamIm
 
   const categoriesResult = await client.getLiveCategories();
   if (!categoriesResult.ok) {
-    throw new XtreamConnectionError(categoriesResult.message, categoriesResult.error);
+    throw new XtreamConnectionError(categoriesResult.error);
   }
   const categoryNameById = new Map(categoriesResult.data.map((c) => [c.categoryId, c.categoryName]));
 
   const streamsResult = await client.getLiveStreams();
   if (!streamsResult.ok) {
-    throw new XtreamConnectionError(streamsResult.message, streamsResult.error);
+    throw new XtreamConnectionError(streamsResult.error);
   }
 
   const channels: PersistableChannel[] = streamsResult.data.map((stream, index) => ({
