@@ -9,6 +9,7 @@ import { Payment } from '../payments/payment.entity';
 import { Playlist } from '../playlists/playlist.entity';
 import { SyncBlob } from '../sync/sync-blob.entity';
 import { AnalyticsEvent } from '../analytics/analytics-event.entity';
+import { PairingCode } from '../pairing/pairing-code.entity';
 
 // Dedicated DataSource for the TypeORM CLI (migration:generate / migration:run).
 // Kept separate from app.module.ts's TypeOrmModule.forRootAsync because the
@@ -35,6 +36,6 @@ export const AppDataSource = new DataSource({
   // Never true here: migrations are the only schema-mutation path once this
   // file is in use (see docs/GUIDE_DEPLOIEMENT.md).
   synchronize: false,
-  entities: [User, Subscription, Device, Payment, Playlist, SyncBlob, AnalyticsEvent],
+  entities: [User, Subscription, Device, Payment, Playlist, SyncBlob, AnalyticsEvent, PairingCode],
   migrations: [__dirname + '/../migrations/*.{ts,js}'],
 });

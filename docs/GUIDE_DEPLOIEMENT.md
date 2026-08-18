@@ -91,3 +91,31 @@ Fichier statique unique (`apps/admin/index.html`) — déployable sur n'importe 
 Vercel, GitHub Pages, ou simplement servi par le même reverse proxy que le backend sur un sous-chemin `/admin`).
 Aucune variable d'environnement : l'URL du backend se saisit dans l'écran de connexion et reste en mémoire pour la
 session du navigateur.
+
+## Appairage TV (Device Authorization Grant)
+
+Le module `apps/backend/src/pairing/` implémente l'appairage d'un téléviseur sur le modèle de l'OAuth 2.0 Device
+Authorization Grant (RFC 8628) — le même que Netflix ou YouTube sur TV. Il existe parce que saisir une URL M3U de
+120 caractères à la télécommande est impraticable : la TV affiche un code court, l'utilisateur l'autorise depuis son
+téléphone, la TV récupère un token.
+
+| Endpoint | Auth | Appelé par |
+|---|---|---|
+| `POST /pairing/start` | aucune | le téléviseur |
+| `POST /pairing/poll` | secret d'appareil | le téléviseur |
+| `GET /pairing/:code` | JWT | le web |
+| `POST /pairing/:code/approve` | JWT | le web |
+| `POST /pairing/:code/deny` | JWT | le web |
+
+**Le point de sécurité à ne pas casser** : `/start` renvoie DEUX valeurs. Le `code` court est affiché à l'écran,
+donc à considérer comme devinable. Le `deviceSecret` (256 bits) n'est jamais affiché nulle part et n'est connu que
+du téléviseur — c'est lui, et lui seul, qui autorise `/poll` à délivrer le token. Deviner un code affiché ne donne
+donc rien. Vérifié en conditions réelles : une requête `/poll` avec le bon code mais un mauvais secret renvoie 401.
+
+Autres garanties, toutes couvertes par `src/pairing/__tests__/` : usage strictement unique (rejeu → 410), expiration
+à 10 minutes, verrouillage après 10 secrets erronés, alphabet sans caractères ambigus (ni O/0 ni I/1/L), saisie
+tolérante à la casse/aux tirets, et vérification de la limite d'appareils au moment de l'autorisation plutôt que
+plus tard sur la TV.
+
+La migration correspondante est `src/migrations/*-AddPairingCodes.ts` (générée, `run` et `revert` vérifiés contre un
+vrai PostgreSQL). En production, appliquer avec la commande de l'étape 6 de `docs/GUIDE_VPS.md`.

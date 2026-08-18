@@ -13,6 +13,7 @@ import { SyncModule } from './sync/sync.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { AdminModule } from './admin/admin.module';
+import { PairingModule } from './pairing/pairing.module';
 
 import { User } from './users/user.entity';
 import { Subscription } from './subscriptions/subscription.entity';
@@ -21,6 +22,7 @@ import { Payment } from './payments/payment.entity';
 import { Playlist } from './playlists/playlist.entity';
 import { SyncBlob } from './sync/sync-blob.entity';
 import { AnalyticsEvent } from './analytics/analytics-event.entity';
+import { PairingCode } from './pairing/pairing-code.entity';
 
 @Module({
   imports: [
@@ -39,7 +41,7 @@ import { AnalyticsEvent } from './analytics/analytics-event.entity';
         // local dev, but production should use TypeORM migrations instead
         // (see docs/GUIDE_DEPLOIEMENT.md). Controlled by DB_SYNCHRONIZE.
         synchronize: config.get<boolean>('database.synchronize'),
-        entities: [User, Subscription, Device, Payment, Playlist, SyncBlob, AnalyticsEvent],
+        entities: [User, Subscription, Device, Payment, Playlist, SyncBlob, AnalyticsEvent, PairingCode],
       }),
     }),
     AppConfigModule,
@@ -53,6 +55,7 @@ import { AnalyticsEvent } from './analytics/analytics-event.entity';
     NotificationsModule,
     AnalyticsModule,
     AdminModule,
+    PairingModule,
   ],
 })
 export class AppModule {}
