@@ -53,7 +53,12 @@
       "infinyStream": {
         "trialDays": 30,
         "defaultDeviceLimit": 2
+      },
+      "router": {},
+      "eas": {
+        "projectId": "697ff48d-ee5a-4de6-88ed-d49de57f6fcf"
       }
-    }
+    },
+    "owner": "mrnac99"
   }
 }
