@@ -19,7 +19,7 @@ votre VPS ; copiez/collez ces commandes dans votre propre terminal SSH.
 ## 0. Ce qu'il vous faut avant de commencer
 
 - L'adresse IP du VPS et un accès SSH (fourni par Hostinger à l'achat, ou dans hPanel).
-- Un nom de domaine dont vous contrôlez la zone DNS (ex. `api.infinystream.app`) — nécessaire pour le HTTPS via
+- Un nom de domaine dont vous contrôlez la zone DNS (ex. `api.infinistream.pro`) — nécessaire pour le HTTPS via
   Let's Encrypt. Sans domaine, vous pouvez tout faire sauf l'étape TLS.
 - Le code poussé sur `github.com/noealexiscamara-stack/Infinistream` (voir la section "Pousser le code" plus bas si
   ce n'est pas encore fait).
@@ -120,22 +120,25 @@ Vous devez voir un JSON avec `basePrice`, `baseCurrency`, `trialDays`, `deviceLi
 
 ## 8. Nginx + HTTPS (Let's Encrypt)
 
-Pointez d'abord un enregistrement DNS **A** de votre domaine (ex. `api.infinystream.app`) vers l'IP du VPS, puis :
+Le domaine retenu pour ce projet est **infinistream.pro** — pointez d'abord un enregistrement DNS **A** pour le
+sous-domaine `api.infinistream.pro` vers l'IP du VPS (hPanel Hostinger si le domaine y est acheté : Domaines →
+DNS/Nameservers → DNS Zone Editor → ajouter un enregistrement A, nom `api`, valeur = IP du VPS), puis :
 
 ```bash
 apt install -y nginx certbot python3-certbot-nginx
 cp deploy/nginx/infiny-stream.conf /etc/nginx/sites-available/infiny-stream
-sed -i 's/api.VOTRE-DOMAINE.example/api.infinystream.app/' /etc/nginx/sites-available/infiny-stream   # adaptez le domaine
+# deploy/nginx/infiny-stream.conf référence déjà api.infinistream.pro — si vous changez un jour de domaine,
+# adaptez-le avec : sed -i 's/api.infinistream.pro/nouveau-domaine/' /etc/nginx/sites-available/infiny-stream
 ln -s /etc/nginx/sites-available/infiny-stream /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
-certbot --nginx -d api.infinystream.app   # génère le certificat et réécrit le fichier pour ajouter le bloc HTTPS
+certbot --nginx -d api.infinistream.pro   # génère le certificat et réécrit le fichier pour ajouter le bloc HTTPS
 ```
 
 Vérification finale, depuis votre propre machine cette fois (pas le VPS) :
 
 ```bash
-curl https://api.infinystream.app/config
+curl https://api.infinistream.pro/config
 ```
 
 ## 9. Créer le premier compte admin
@@ -149,7 +152,7 @@ docker compose --env-file .env.production exec postgres psql -U infiny_stream -d
 ```
 
 Le dashboard admin (`apps/admin/index.html`) est servi par le même Nginx sous `/admin/` (voir la config) —
-accessible à `https://api.infinystream.app/admin/`, connectez-vous avec ce compte.
+accessible à `https://api.infinistream.pro/admin/`, connectez-vous avec ce compte.
 
 ## 10. Mises à jour ultérieures
 
