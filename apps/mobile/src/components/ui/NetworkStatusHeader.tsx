@@ -1,44 +1,34 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { NETWORK_QUALITY_LABELS, QUALITY_MODE_LABELS } from '@infiny-stream/types';
 import { colors, networkQualityColor, radius, spacing, typography } from '@/theme/tokens';
 import { useNetworkState } from '@/store/useNetworkStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
+import { connectionLevelLabel, currentQualityLabel, hasNetworkMeasurement, qualityModeLabel } from '@/utils/networkDisplay';
 
 /**
- * The one piece of "network truth" shown to the user, everywhere,
- * expressed the way product rule #3 asks for it — never bitrate/buffer/
- * codec jargon, just Connexion / Qualité / Mode.
+ * Compact connection readout for screens that are not the home hero.
+ * Values come from NetworkMonitor; unmeasured quality stays neutral.
  */
 export function NetworkStatusHeader() {
   const network = useNetworkState();
   const qualityMode = useSettingsStore((s) => s.qualityMode);
-
-  const qualityLabel =
-    network.quality === 'offline'
-      ? '—'
-      : network.estimatedThroughputKbps >= 4000
-        ? 'Full HD'
-        : network.estimatedThroughputKbps >= 1500
-          ? 'HD'
-          : network.estimatedThroughputKbps > 0
-            ? 'SD'
-            : 'Auto';
+  const measured = hasNetworkMeasurement(network);
+  const dotColor = network.quality === 'offline' ? networkQualityColor.offline : measured ? networkQualityColor[network.quality] : colors.textTertiary;
 
   return (
     <View style={styles.row}>
       <View style={styles.item}>
-        <View style={[styles.dot, { backgroundColor: networkQualityColor[network.quality] }]} />
+        <View style={[styles.dot, { backgroundColor: dotColor }]} />
         <Text style={styles.label}>
-          Connexion : <Text style={styles.value}>{NETWORK_QUALITY_LABELS[network.quality]}</Text>
+          Connexion : <Text style={styles.value}>{connectionLevelLabel(network)}</Text>
         </Text>
       </View>
       <View style={styles.separator} />
       <Text style={styles.label}>
-        Qualité : <Text style={styles.value}>{qualityLabel}</Text>
+        Qualité : <Text style={styles.value}>{currentQualityLabel(network)}</Text>
       </Text>
       <View style={styles.separator} />
       <Text style={styles.label}>
-        Mode : <Text style={styles.value}>{QUALITY_MODE_LABELS[qualityMode]}</Text>
+        Mode : <Text style={styles.value}>{qualityModeLabel(qualityMode)}</Text>
       </Text>
     </View>
   );

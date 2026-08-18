@@ -12,10 +12,11 @@
  */
 
 export const colors = {
-  background: '#0B0D12',
-  backgroundElevated: '#12151C',
-  surface: '#171B24',
-  surfaceGlass: 'rgba(23, 27, 36, 0.72)',
+  background: '#070B16',
+  backgroundElevated: '#0E1422',
+  backgroundGlow: '#122038',
+  surface: '#141B2A',
+  surfaceGlass: 'rgba(18, 26, 42, 0.72)',
   border: 'rgba(255, 255, 255, 0.08)',
   borderStrong: 'rgba(255, 255, 255, 0.16)',
 
@@ -25,8 +26,9 @@ export const colors = {
 
   brand: '#5B8CFF',
   brandStrong: '#3D6BFF',
-  gradientStart: '#5B8CFF',
-  gradientEnd: '#8A5CFF',
+  cyan: '#4EC4FF',
+  gradientStart: '#4EC4FF',
+  gradientEnd: '#5B8CFF',
 
   success: '#33D17A',
   warning: '#F2B33D',
@@ -59,6 +61,7 @@ export const radius = {
 
 export const typography = {
   display: { fontSize: 32, fontWeight: '700' as const, letterSpacing: -0.5 },
+  hero: { fontSize: 26, fontWeight: '700' as const, letterSpacing: -0.4 },
   title: { fontSize: 22, fontWeight: '700' as const, letterSpacing: -0.3 },
   headline: { fontSize: 18, fontWeight: '600' as const },
   body: { fontSize: 15, fontWeight: '400' as const },
