@@ -180,7 +180,7 @@ export default function PlayerScreen() {
     setScreenState('loading');
     const streamUrl =
       group && channel.kind !== 'radio'
-        ? controllerRef.current.attachChannelGroup(group, qualityMode)
+        ? controllerRef.current.attachChannelGroup(group)
         : channel.streamUrl;
     controllerRef.current.loadChannel(streamUrl).then(() => setScreenState('playing'));
   }

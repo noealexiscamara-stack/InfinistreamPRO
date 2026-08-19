@@ -8,6 +8,7 @@ import { colors, radius, spacing, typography } from '@/theme/tokens';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { QualityModeSelector } from '@/components/ui/QualityModeSelector';
 import { useSettingsStore } from '@/store/useSettingsStore';
+import { getBuildGitShaShort } from '@/utils/buildInfo';
 
 function Row({ icon, label, meta, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; meta?: string; onPress: () => void }) {
   return (
@@ -75,6 +76,7 @@ export default function SettingsScreen() {
         <Text style={styles.footer}>
           {APP_NAME} · v{version}
         </Text>
+        <Text style={styles.buildSha}>build {getBuildGitShaShort()}</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -92,4 +94,12 @@ const styles = StyleSheet.create({
   rowMeta: { ...typography.caption, color: colors.textSecondary },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   footer: { ...typography.caption, color: colors.textTertiary, textAlign: 'center', marginTop: spacing.lg },
+  buildSha: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+    opacity: 0.75,
+  },
 });
