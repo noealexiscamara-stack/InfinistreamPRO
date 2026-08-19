@@ -6,11 +6,36 @@ export function hasNetworkMeasurement(state: NetworkState): boolean {
   return state.quality === 'offline' || state.estimatedThroughputKbps > 0;
 }
 
-/** Connection level from real measurements only — never a Wi-Fi/cellular guess. */
+/** Connection level — uses OS/provisional quality before playback measurements exist. */
 export function connectionLevelLabel(state: NetworkState): string {
   if (state.quality === 'offline') return NETWORK_QUALITY_LABELS.offline;
-  if (!hasNetworkMeasurement(state)) return NEUTRAL;
   return NETWORK_QUALITY_LABELS[state.quality];
+}
+
+/** Headline + subtitle for the connection card header. */
+export function connectionDisplay(state: NetworkState): { title: string; subtitle: string } {
+  if (state.quality === 'offline') {
+    return { title: 'Hors ligne', subtitle: 'Aucune connexion' };
+  }
+
+  const title = NETWORK_QUALITY_LABELS[state.quality];
+
+  if (hasNetworkMeasurement(state)) {
+    return {
+      title,
+      subtitle: state.isStable ? 'Connexion stable' : 'Mesure en cours',
+    };
+  }
+
+  if (state.connectionType === 'wifi' || state.connectionType === 'ethernet') {
+    return { title, subtitle: 'Connexion stable' };
+  }
+
+  if (state.connectionType === 'cellular') {
+    return { title, subtitle: 'Réseau mobile' };
+  }
+
+  return { title, subtitle: 'Connexion détectée' };
 }
 
 /** Current quality label from measured throughput. Neutral until a sample exists. */

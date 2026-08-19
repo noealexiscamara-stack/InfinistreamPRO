@@ -1,10 +1,11 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, networkQualityColor, radius, spacing, typography } from '@/theme/tokens';
+import { colors, elevation, networkQualityColor, radius, spacing, typography } from '@/theme/tokens';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { useNetworkState } from '@/store/useNetworkStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import {
+  connectionDisplay,
   connectionLevelLabel,
   currentQualityLabel,
   hasNetworkMeasurement,
@@ -16,6 +17,7 @@ export function SmartConnectionCard() {
   const network = useNetworkState();
   const qualityMode = useSettingsStore((s) => s.qualityMode);
   const measured = hasNetworkMeasurement(network);
+  const { title, subtitle } = connectionDisplay(network);
   const level = connectionLevelLabel(network);
   const quality = currentQualityLabel(network);
   const throughput = throughputLabel(network);
@@ -24,12 +26,12 @@ export function SmartConnectionCard() {
       ? networkQualityColor.offline
       : measured
         ? networkQualityColor[network.quality]
-        : colors.textTertiary;
+        : networkQualityColor[network.quality];
 
   return (
-    <GlassCard style={styles.card}>
+    <GlassCard style={[styles.card, elevation.cardGlow(indicatorColor)]}>
       <View style={styles.header}>
-        <View style={[styles.iconWrap, { borderColor: indicatorColor }]}>
+        <View style={[styles.iconWrap, { borderColor: indicatorColor, backgroundColor: `${indicatorColor}18` }]}>
           <Ionicons
             name={network.quality === 'offline' ? 'cloud-offline-outline' : 'wifi'}
             size={22}
@@ -38,14 +40,14 @@ export function SmartConnectionCard() {
         </View>
         <View style={styles.headerCopy}>
           <Text style={styles.kicker}>Smart Connection</Text>
-          <Text style={styles.level}>
-            {network.quality === 'offline' ? 'Hors ligne' : measured ? `Connexion ${level.toLowerCase()}` : 'Mesure en attente'}
-          </Text>
+          <Text style={styles.level}>{title}</Text>
+          <Text style={styles.subtitle}>{subtitle}</Text>
         </View>
+        <View style={[styles.statusDot, { backgroundColor: indicatorColor }]} />
       </View>
 
       <View style={styles.metrics}>
-        <Metric label="Connexion" value={level} />
+        <Metric label="Connexion" value={level} accent={indicatorColor} />
         <Metric label="Qualité actuelle" value={quality} />
         <Metric label="Mode" value={qualityModeLabel(qualityMode)} />
       </View>
@@ -56,17 +58,17 @@ export function SmartConnectionCard() {
           {network.isStable ? ' · Stable' : ''}
         </Text>
       ) : (
-        <Text style={styles.hint}>La qualité s’affiche dès qu’une chaîne est en lecture.</Text>
+        <Text style={styles.hint}>La qualité vidéo s’affiche dès qu’une chaîne est en lecture.</Text>
       )}
     </GlassCard>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <View style={styles.metric}>
       <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
+      <Text style={[styles.metricValue, accent ? { color: accent } : undefined]}>{value}</Text>
     </View>
   );
 }
@@ -74,6 +76,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   card: {
     gap: spacing.md,
+    borderColor: colors.borderStrong,
   },
   header: {
     flexDirection: 'row',
@@ -81,11 +84,10 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   iconWrap: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     borderRadius: radius.md,
-    borderWidth: 1,
-    backgroundColor: colors.surface,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -101,6 +103,15 @@ const styles = StyleSheet.create({
     ...typography.headline,
     color: colors.textPrimary,
   },
+  subtitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: radius.pill,
+  },
   metrics: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -108,6 +119,10 @@ const styles = StyleSheet.create({
   metric: {
     flex: 1,
     gap: 2,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
   },
   metricLabel: {
     ...typography.caption,

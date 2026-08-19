@@ -89,8 +89,9 @@ export default function PlayerScreen() {
         activeGroup = findGroupContaining(siblingGroups, ch.id) ?? null;
         setSiblings(siblingGroups);
         setGroup(activeGroup);
+        controller.setMode(qualityMode);
         if (activeGroup) {
-          streamUrl = controller.attachChannelGroup(activeGroup, qualityMode);
+          streamUrl = controller.attachChannelGroup(activeGroup);
         }
       }
 
@@ -118,7 +119,9 @@ export default function PlayerScreen() {
         onReconnected: () => setScreenState('playing'),
         onFatalError: () => setScreenState('error'),
       });
-      controller.setMode(qualityMode);
+      if (!isLive) {
+        controller.setMode(qualityMode);
+      }
 
       try {
         await controller.loadChannel(streamUrl);

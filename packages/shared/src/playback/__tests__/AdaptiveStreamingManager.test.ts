@@ -21,15 +21,20 @@ function feed(manager: AdaptiveStreamingManager, kbpsSeq: number[], startMs = 0,
 }
 
 describe('AdaptiveStreamingManager', () => {
+  it('returns null when no variants are loaded yet', () => {
+    const manager = new AdaptiveStreamingManager();
+    expect(manager.decide(0)).toBeNull();
+  });
+
   it('never invents a quality: a single-variant source is always a pass-through', () => {
     const manager = new AdaptiveStreamingManager();
     manager.setVariants([{ id: 'only', heightLabel: 360, bitrateKbps: 800, url: 'solo' }]);
-    const first = manager.decide(0);
+    const first = manager.decide(0)!;
     expect(first.variant.id).toBe('only');
     expect(first.reason).toBe('single_variant');
 
     manager.reportSample({ timestampMs: 1000, throughputKbps: 50000, connectionType: 'wifi', fromStall: false });
-    const second = manager.decide(1000);
+    const second = manager.decide(1000)!;
     expect(second.variant.id).toBe('only');
     expect(second.changed).toBe(false);
   });
@@ -37,7 +42,7 @@ describe('AdaptiveStreamingManager', () => {
   it('starts conservatively rather than guessing the top rendition', () => {
     const manager = new AdaptiveStreamingManager();
     manager.setVariants(LADDER);
-    const decision = manager.decide(0);
+    const decision = manager.decide(0)!;
     expect(decision.variant.id).toBe('360p');
   });
 
@@ -47,11 +52,11 @@ describe('AdaptiveStreamingManager', () => {
 
     // A single low sample should not be enough (downgradeConsecutiveSamples = 3 for auto).
     const { decisions } = feed(manager, [200, 200], 0, 2000);
-    expect(decisions[0].changed).toBe(false);
-    expect(decisions[1].changed).toBe(false);
+    expect(decisions[0]!.changed).toBe(false);
+    expect(decisions[1]!.changed).toBe(false);
 
     manager.reportSample({ timestampMs: 4000, throughputKbps: 200, connectionType: 'wifi', fromStall: false });
-    const third = manager.decide(4000);
+    const third = manager.decide(4000)!;
     expect(third.changed).toBe(true);
     expect(third.reason).toBe('downgrade_network');
     expect(third.variant.bitrateKbps).toBeLessThan(1400);
@@ -68,8 +73,8 @@ describe('AdaptiveStreamingManager', () => {
     const noisy = [1500, 1300, 1480, 1320, 1460, 1340, 1500, 1300, 1480, 1320];
     const { decisions } = feed(manager, noisy, 0, 2000);
 
-    expect(decisions.every((d) => d.changed === false)).toBe(true);
-    expect(decisions[decisions.length - 1].variant.id).toBe('480p');
+    expect(decisions.every((d) => d!.changed === false)).toBe(true);
+    expect(decisions[decisions.length - 1]!.variant.id).toBe('480p');
   });
 
   it('only upgrades after headroom is sustained for the full observation window', () => {
@@ -87,7 +92,7 @@ describe('AdaptiveStreamingManager', () => {
       manager.reportSample({ timestampMs: t, throughputKbps: 5000, connectionType: 'wifi', fromStall: false });
       last = manager.decide(t);
       if (t < 21000) {
-        expect(last.changed).toBe(false);
+        expect(last!.changed).toBe(false);
       }
     }
 
@@ -108,7 +113,7 @@ describe('AdaptiveStreamingManager', () => {
     manager.reportSample({ timestampMs: 9000, throughputKbps: 1300, connectionType: 'wifi', fromStall: false });
     manager.decide(9000);
     manager.reportSample({ timestampMs: 12000, throughputKbps: 5000, connectionType: 'wifi', fromStall: false });
-    const afterDip = manager.decide(12000);
+    const afterDip = manager.decide(12000)!;
 
     // Only 3s have passed since the dip broke tracking — nowhere near the
     // 15s window required to confirm 720p again.
@@ -121,7 +126,7 @@ describe('AdaptiveStreamingManager', () => {
     manager.decide(0); // establishes lastSwitchAt via no prior switch — cooldown not yet relevant
 
     manager.reportStall(300, 500);
-    const decision = manager.decide(500, true);
+    const decision = manager.decide(500, true)!;
     expect(decision.changed).toBe(true);
     expect(decision.reason).toBe('downgrade_stall');
     expect(decision.variant.bitrateKbps).toBeLessThan(2800);
@@ -134,7 +139,7 @@ describe('AdaptiveStreamingManager', () => {
 
     const { decisions } = feed(manager, [8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000], 0, 1000);
     for (const d of decisions) {
-      expect(d.variant.heightLabel).toBeLessThanOrEqual(480);
+      expect(d!.variant.heightLabel).toBeLessThanOrEqual(480);
     }
   });
 
@@ -153,8 +158,8 @@ describe('AdaptiveStreamingManager', () => {
     const balancedResult = feed(balanced, [dropKbps, dropKbps, dropKbps, dropKbps], 0, 2000);
     const qualityResult = feed(quality, [dropKbps, dropKbps, dropKbps, dropKbps], 0, 2000);
 
-    expect(balancedResult.decisions.some((d) => d.changed)).toBe(true);
-    expect(qualityResult.decisions.some((d) => d.changed)).toBe(false);
+    expect(balancedResult.decisions.some((d) => d!.changed)).toBe(true);
+    expect(qualityResult.decisions.some((d) => d!.changed)).toBe(false);
   });
 
   it('clamps down immediately when switching to a stricter mode, bypassing cooldown', () => {
@@ -163,7 +168,7 @@ describe('AdaptiveStreamingManager', () => {
     manager.decide(0);
 
     manager.setMode('economy');
-    const clamped = manager.decide(100);
+    const clamped = manager.decide(100)!;
     expect(clamped.reason).toBe('mode_cap');
     expect(clamped.variant.heightLabel).toBeLessThanOrEqual(480);
   });

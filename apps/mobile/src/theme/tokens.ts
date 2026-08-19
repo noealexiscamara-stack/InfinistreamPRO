@@ -83,3 +83,70 @@ export const networkQualityColor: Record<'excellent' | 'good' | 'medium' | 'low'
   low: colors.networkLow,
   offline: colors.networkOffline,
 };
+
+/** Universe identity — shared between mobile home and future TV shell. */
+export type UniverseId = 'live' | 'movies' | 'series' | 'radios' | 'favorites' | 'search';
+
+export interface UniverseTheme {
+  /** Top → bottom tile gradient. */
+  gradient: readonly [string, string];
+  accent: string;
+  glow: string;
+}
+
+export const universeThemes: Record<UniverseId, UniverseTheme> = {
+  live: {
+    gradient: ['#1B4D8C', '#0A1628'],
+    accent: '#4EC4FF',
+    glow: 'rgba(78, 196, 255, 0.35)',
+  },
+  movies: {
+    gradient: ['#5B2D8C', '#120A22'],
+    accent: '#B57BFF',
+    glow: 'rgba(181, 123, 255, 0.35)',
+  },
+  series: {
+    gradient: ['#0D6B6B', '#071A1A'],
+    accent: '#2DD4BF',
+    glow: 'rgba(45, 212, 191, 0.35)',
+  },
+  radios: {
+    gradient: ['#8B4A12', '#1A1008'],
+    accent: '#F59E0B',
+    glow: 'rgba(245, 158, 11, 0.35)',
+  },
+  favorites: {
+    gradient: ['#7A2D5C', '#160810'],
+    accent: '#F472B6',
+    glow: 'rgba(244, 114, 182, 0.35)',
+  },
+  search: {
+    gradient: ['#2A3140', '#0C0E14'],
+    accent: '#9AA3B2',
+    glow: 'rgba(154, 163, 178, 0.25)',
+  },
+};
+
+export const elevation = {
+  card: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.4,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  cardSubtle: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  cardGlow: (glowColor: string) => ({
+    shadowColor: glowColor,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.55,
+    shadowRadius: 14,
+    elevation: 8,
+  }),
+} as const;

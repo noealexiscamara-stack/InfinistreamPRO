@@ -125,9 +125,9 @@ export class AdaptiveStreamingManager {
    * Call this periodically (e.g. every few seconds, or after a stall) —
    * it is cheap and side-effect-free besides internal hysteresis bookkeeping.
    */
-  decide(nowMs: number, forceImmediate = false): QualityDecision {
+  decide(nowMs: number, forceImmediate = false): QualityDecision | null {
     if (this.variants.length === 0) {
-      throw new Error('AdaptiveStreamingManager.decide() called before setVariants()');
+      return null;
     }
 
     if (this.variants.length === 1) {

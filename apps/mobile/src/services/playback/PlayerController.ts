@@ -74,6 +74,8 @@ export class PlayerController {
   private isReconnecting = false;
   private currentStreamUrl = '';
   private lastKnownSafeUrl = '';
+  private hasActiveSource = false;
+  private qualityMode: QualityMode = 'auto';
   private disposed = false;
 
   constructor(player: VideoPlayer) {
@@ -84,16 +86,23 @@ export class PlayerController {
     this.callbacks = callbacks;
   }
 
+  getMode(): QualityMode {
+    return this.qualityMode;
+  }
+
+  /** Persists the mode immediately; re-evaluation waits until a source is loaded. */
   setMode(mode: QualityMode): void {
+    this.qualityMode = mode;
     this.adm.setMode(mode);
     this.tierSwitcher?.setMaxHeightLabel(QUALITY_MODE_PROFILES[mode].maxHeightLabel);
+    if (!this.hasActiveSource) return;
     this.reevaluate(true);
     this.reevaluateTier();
   }
 
-  attachChannelGroup(group: GroupedChannel, mode: QualityMode): string {
+  attachChannelGroup(group: GroupedChannel): string {
     this.tierSwitcher = new ChannelTierSwitcher(group, {
-      maxHeightLabel: QUALITY_MODE_PROFILES[mode].maxHeightLabel,
+      maxHeightLabel: QUALITY_MODE_PROFILES[this.qualityMode].maxHeightLabel,
     });
     return this.tierSwitcher.currentTier().channel.streamUrl;
   }
@@ -108,10 +117,11 @@ export class PlayerController {
   async loadChannel(directUrl: string): Promise<void> {
     if (this.disposed) return;
     this.reconnectAttempt = 0;
+    this.hasActiveSource = false;
     this.stopReevaluationLoop();
     this.stopTierLoop();
     await this.applyStreamUrl(directUrl);
-    if (this.disposed) return;
+    if (this.disposed || !this.hasActiveSource) return;
     this.startReevaluationLoop();
     this.startTierLoop();
   }
@@ -137,6 +147,14 @@ export class PlayerController {
     }
 
     const decision = this.adm.decide(Date.now());
+    if (!decision) {
+      this.hasActiveSource = false;
+      this.stopReevaluationLoop();
+      this.stopTierLoop();
+      return;
+    }
+
+    this.hasActiveSource = true;
     await this.setSource(decision.variant.url);
   }
 
@@ -178,8 +196,13 @@ export class PlayerController {
   }
 
   private reevaluate(force: boolean): void {
-    if (this.disposed) return;
+    if (this.disposed || !this.hasActiveSource) return;
     const decision = this.adm.decide(Date.now(), force);
+    if (!decision) {
+      this.hasActiveSource = false;
+      this.stopReevaluationLoop();
+      return;
+    }
     this.callbacks.onNetworkStateChange?.(this.adm.getNetworkState(Date.now()));
     if (decision.changed && decision.variant.url !== this.currentStreamUrl) {
       this.callbacks.onQualityChange?.(decision);
@@ -205,6 +228,7 @@ export class PlayerController {
    * for the user than a slightly-too-low quality, so we react fast.
    */
   reportStall(): void {
+    if (this.disposed || !this.hasActiveSource) return;
     const now = Date.now();
     // Conservative guess: the connection currently supports at most half
     // of what we were attempting, until real numbers arrive.
@@ -270,6 +294,7 @@ export class PlayerController {
 
   dispose(): void {
     this.disposed = true;
+    this.hasActiveSource = false;
     this.stopReevaluationLoop();
     this.stopTierLoop();
   }
