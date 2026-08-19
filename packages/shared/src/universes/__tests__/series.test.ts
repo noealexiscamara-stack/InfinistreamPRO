@@ -2,11 +2,12 @@ import type { Channel } from '@infiny-stream/types';
 import { groupEpisodesIntoSeries, parseEpisodeName } from '../series';
 
 function ch(partial: Partial<Channel> & Pick<Channel, 'name'>): Channel {
+  const sortIndex = partial.sortIndex ?? 0;
   return {
     id: partial.id ?? `ch_${partial.name}`,
     sourceId: partial.sourceId ?? 'src1',
-    streamUrl: partial.streamUrl ?? 'http://x/stream',
-    sortIndex: partial.sortIndex ?? 0,
+    streamUrl: partial.streamUrl ?? `http://x/stream/${sortIndex}/${encodeURIComponent(partial.name)}`,
+    sortIndex,
     ...partial,
   };
 }
@@ -112,12 +113,12 @@ describe('groupEpisodesIntoSeries', () => {
     expect(series[0].logoUrl).toBe('http://logo');
   });
 
-  it('sorts series titles alphabetically', () => {
+  it('orders series by first playlist appearance', () => {
     const { series } = groupEpisodesIntoSeries([
       ch({ name: 'Zulu S01E01' }),
       ch({ name: 'Alpha S01E01' }),
     ]);
-    expect(series.map((s) => s.title)).toEqual(['Alpha', 'Zulu']);
+    expect(series.map((s) => s.title)).toEqual(['Zulu', 'Alpha']);
   });
 
   it('keeps distinct source ids separate even with the same title', () => {

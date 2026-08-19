@@ -1,101 +1,68 @@
 import type { Channel, GroupedSeries, GroupEpisodesResult } from '@infiny-stream/types';
-import { stableHash } from '../utils/id';
+import { parseEpisodeMarker, splitEpisodeName } from '../content/classify';
+import {
+  groupEpisodesIntoSeries as groupSeriesFlat,
+  type GroupSeriesInput,
+} from '../content/groupSeries';
 
-interface ParsedEpisode {
-  seriesTitle: string;
-  season: number;
-  episode: number;
+export function parseEpisodeName(name: string): { seriesTitle: string; season: number; episode: number } | null {
+  const marker = parseEpisodeMarker(name);
+  if (!marker) return null;
+  return { seriesTitle: splitEpisodeName(name).seriesTitle, ...marker };
 }
 
-const PATTERNS: Array<{ re: RegExp; pick: (m: RegExpMatchArray) => ParsedEpisode | null }> = [
-  {
-    re: /^(.*?)\s*[Ss](?:eason\s*)?(\d{1,2})\s*[Ee](?:p(?:isode)?\s*)?(\d{1,2})\b(.*)$/,
-    pick: (m) => ({ seriesTitle: m[1].trim(), season: Number(m[2]), episode: Number(m[3]) }),
-  },
-  {
-    re: /^(.*?)\s*(\d{1,2})x(\d{1,2})\b(.*)$/,
-    pick: (m) => ({ seriesTitle: m[1].trim(), season: Number(m[2]), episode: Number(m[3]) }),
-  },
-  {
-    re: /^(.*?)\s*[Ss]eason\s*(\d{1,2})\s*[Ee]p(?:isode)?\s*(\d{1,2})\b(.*)$/i,
-    pick: (m) => ({ seriesTitle: m[1].trim(), season: Number(m[2]), episode: Number(m[3]) }),
-  },
-];
-
-function parseEpisodeName(name: string): ParsedEpisode | null {
-  const trimmed = name.trim();
-  for (const { re, pick } of PATTERNS) {
-    const match = trimmed.match(re);
-    if (match) {
-      const parsed = pick(match);
-      if (parsed && parsed.seriesTitle.length > 0) return parsed;
-    }
-  }
-  return null;
+function inputKey(entry: GroupSeriesInput): string {
+  return `${entry.sourceId}\0${entry.name}\0${entry.sortIndex}`;
 }
 
-function seriesKey(sourceId: string, title: string): string {
-  return `ser_${stableHash(`${sourceId}::${title.toLowerCase()}`)}`;
-}
-
-/**
- * Builds series → seasons → episodes from flat playlist rows already tagged
- * `kind === 'series'`. Anything that looks like a series entry but does not
- * match an episode pattern lands in `unparsed` so it is never silently dropped.
- */
+/** Adapts flat series items to the nested season view the mobile app expects. */
 export function groupEpisodesIntoSeries(channels: Channel[]): GroupEpisodesResult {
-  const bySeries = new Map<string, GroupedSeries>();
-  const unparsed: Channel[] = [];
+  const originals = new Map(channels.map((ch) => [inputKey(ch), ch]));
 
-  for (const channel of channels) {
-    const parsed = parseEpisodeName(channel.name);
-    if (!parsed) {
-      unparsed.push(channel);
-      continue;
-    }
+  const input: GroupSeriesInput[] = channels.map((ch) => ({
+    name: ch.name,
+    streamUrl: ch.streamUrl,
+    groupTitle: ch.groupTitle,
+    sourceId: ch.sourceId,
+    sortIndex: ch.sortIndex,
+    logoUrl: ch.logoUrl,
+  }));
 
-    const key = seriesKey(channel.sourceId, parsed.seriesTitle);
-    let series = bySeries.get(key);
-    if (!series) {
-      series = {
-        id: key,
-        sourceId: channel.sourceId,
-        title: parsed.seriesTitle,
-        logoUrl: channel.logoUrl,
-        sortIndex: channel.sortIndex,
-        seasons: [],
-      };
-      bySeries.set(key, series);
-    } else {
-      series.sortIndex = Math.min(series.sortIndex, channel.sortIndex);
-      if (!series.logoUrl && channel.logoUrl) series.logoUrl = channel.logoUrl;
-    }
+  const { series, unparsed } = groupSeriesFlat(input);
 
-    let season = series.seasons.find((s) => s.season === parsed.season);
-    if (!season) {
-      season = { season: parsed.season, episodes: [] };
-      series.seasons.push(season);
-    }
-    season.episodes.push(channel);
-  }
+  const grouped: GroupedSeries[] = series.map((item) => ({
+    id: item.id,
+    sourceId: item.sourceId,
+    title: item.name,
+    logoUrl: item.logoUrl,
+    sortIndex: item.sortIndex,
+    seasons: item.seasons.map((seasonNum) => ({
+      season: seasonNum,
+      episodes: item.episodes
+        .filter((ep) => ep.season === seasonNum)
+        .map((ep) => {
+          const original =
+            channels.find((ch) => ch.streamUrl === ep.streamUrl && ch.sourceId === ep.sourceId) ??
+            channels.find((ch) => ch.sourceId === ep.sourceId && ch.sortIndex === ep.sortIndex);
+          if (original) return original;
+          return {
+            id: ep.id,
+            sourceId: ep.sourceId,
+            name: ep.title
+              ? `${item.name} — ${ep.title}`
+              : `${item.name} S${String(ep.season).padStart(2, '0')}E${String(ep.episode).padStart(2, '0')}`,
+            streamUrl: ep.streamUrl,
+            logoUrl: ep.logoUrl,
+            groupTitle: item.groupTitle,
+            sortIndex: ep.sortIndex,
+            kind: 'series' as const,
+          };
+        }),
+    })),
+  }));
 
-  const series = [...bySeries.values()]
-    .map((s) => ({
-      ...s,
-      seasons: s.seasons
-        .map((season) => ({
-          ...season,
-          episodes: [...season.episodes].sort((a, b) => {
-            const ea = parseEpisodeName(a.name)?.episode ?? 0;
-            const eb = parseEpisodeName(b.name)?.episode ?? 0;
-            return ea - eb || a.sortIndex - b.sortIndex;
-          }),
-        }))
-        .sort((a, b) => a.season - b.season),
-    }))
-    .sort((a, b) => a.title.localeCompare(b.title, 'fr'));
-
-  return { series, unparsed };
+  return {
+    series: grouped,
+    unparsed: unparsed.map((row) => originals.get(inputKey(row))!).filter(Boolean),
+  };
 }
-
-export { parseEpisodeName };
