@@ -119,3 +119,38 @@ plus tard sur la TV.
 
 La migration correspondante est `src/migrations/*-AddPairingCodes.ts` (générée, `run` et `revert` vérifiés contre un
 vrai PostgreSQL). En production, appliquer avec la commande de l'étape 6 de `docs/GUIDE_VPS.md`.
+
+## API d'administration
+
+`GET /admin/*`, protégé par `AdminGuard` (JWT + `is_admin` en base — vérifié : 403 pour un compte
+non-admin, 401 sans token, sur les cinq routes).
+
+| Route | Contenu |
+|---|---|
+| `/admin/dashboard?period=7d\|30d\|90d\|1y` | KPI, chacun avec la même valeur sur la période précédente |
+| `/admin/series?period=...` | Séries temporelles utilisateurs (total cumulé, nouveaux, premium) et revenus |
+| `/admin/activity?limit=` | Flux d'activité inter-tables |
+| `/admin/payments?limit=` | Derniers paiements, tous utilisateurs |
+| `/admin/devices?limit=` | Appareils actifs, du plus récemment utilisé |
+
+**Trois règles d'honnêteté, à ne pas « simplifier » côté interface** (voir `admin-period.ts`) :
+
+- `changePct` est **null** quand la période précédente vaut 0. Passer de 0 à 5 n'est ni « +500 % »
+  ni « +100 % » — il n'y a pas de pourcentage à afficher. L'UI doit rendre un tiret, pas un chiffre
+  inventé. C'est le cas courant sur un produit jeune, pas un cas limite exotique.
+- Les séries sont **remplies de zéros sur chaque intervalle** de la plage, pour qu'un graphique ne
+  puisse pas suggérer une tendance en reliant deux points de part et d'autre d'un trou.
+- La courbe « utilisateurs totaux » est **cumulative** et démarre au nombre d'utilisateurs existant
+  avant l'ouverture de la fenêtre. Tracer les inscriptions quotidiennes à la place ferait croire que
+  le produit repart de zéro à chaque changement de période.
+
+**Bug réel corrigé ici** : le taux de conversion divisait les abonnements premium *actifs* par les
+essais *expirés*, deux populations qui ne se recouvrent pas — un utilisateur peut passer premium sans
+que son essai expire. Sur le premier jeu de données réaliste, ça a produit **200 %**. Il est
+maintenant mesuré par utilisateur, le numérateur étant un sous-ensemble strict du dénominateur, donc
+borné à 100 % par construction ; et **null** quand aucun essai n'est encore terminé, plutôt que 0 %
+qui se lirait comme un échec plutôt que comme une absence de donnée.
+
+Aucune adresse IP n'est exposée dans `/admin/devices` : l'entité `Device` n'en stocke pas, et en
+ajouter une reviendrait à conserver une donnée personnelle au sens du RGPD pour un panneau qui se lit
+très bien sans. Si c'est ajouté un jour, il faudra une durée de conservation explicite.
