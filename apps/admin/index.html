@@ -72,7 +72,7 @@
     <h1>Infiny Stream</h1>
     <p class="tagline">Administration</p>
     <label for="api-base">URL du serveur</label>
-    <input id="api-base" placeholder="http://localhost:3000" value="http://localhost:3000" />
+    <input id="api-base" placeholder="http://localhost:3000" />
     <label for="email">Email</label>
     <input id="email" type="email" placeholder="admin@infinystream.app" />
     <label for="password">Mot de passe</label>
@@ -199,6 +199,11 @@
   document.getElementById('password').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') login();
   });
+
+  document.getElementById('api-base').value =
+    location.protocol === 'file:' || location.origin === 'null' || !location.origin
+      ? 'http://localhost:3000'
+      : location.origin;
 </script>
 </body>
 </html>
