@@ -10,4 +10,5 @@ export * from './playback/qualityModeProfiles';
 export * from './playback/ChannelTierSwitcher';
 export * from './channels/qualityMarkers';
 export * from './channels/groupChannels';
+export * from './channels/dedupe';
 export * from './utils/id';
