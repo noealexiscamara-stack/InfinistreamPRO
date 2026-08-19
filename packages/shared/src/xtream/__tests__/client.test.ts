@@ -47,6 +47,17 @@ describe('XtreamClient', () => {
     if (!result.ok) expect(result.error).toBe('invalid_credentials');
   });
 
+  it('reports server_error with the HTTP status on 5xx', async () => {
+    const fetchFn = jest.fn().mockResolvedValue(jsonResponse({}, 503));
+    const client = new XtreamClient(credentials, fetchFn as any);
+    const result = await client.authenticate();
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBe('server_error');
+      expect(result.message).toBe('Erreur serveur (HTTP 503)');
+    }
+  });
+
   it('reports a network error without throwing', async () => {
     const fetchFn = jest.fn().mockRejectedValue(new Error('offline'));
     const client = new XtreamClient(credentials, fetchFn as any);
@@ -77,7 +88,12 @@ describe('XtreamClient', () => {
     const fetchFn = jest.fn().mockResolvedValue(jsonResponse([{ stream_id: 10, name: 'RTG', category_id: '1' }]));
     const client = new XtreamClient(credentials, fetchFn as any);
     const result = await client.getLiveStreams('1');
-    expect(fetchFn).toHaveBeenCalledWith(expect.stringContaining('category_id=1'));
+    expect(fetchFn).toHaveBeenCalledWith(
+      expect.stringContaining('category_id=1'),
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20' }),
+      })
+    );
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.data[0]).toEqual({ streamId: 10, name: 'RTG', categoryId: '1', streamIcon: undefined, epgChannelId: undefined });

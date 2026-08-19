@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import type { Source } from '@infiny-stream/types';
 import * as sourcesRepo from '@/services/sourcesRepository';
-import { importM3uSource, type ImportProgress } from '@/services/m3u/importM3u';
-import { importXtreamSource } from '@/services/xtream/importXtream';
+import { importM3uSource, type ImportProgress, type ImportResult } from '@/services/m3u/importM3u';
+import { importXtreamSource, type XtreamImportResult } from '@/services/xtream/importXtream';
+
+type ImportStats = Pick<ImportResult, 'channelCount' | 'ignored' | 'summary'>;
 
 interface SourcesState {
   sources: Source[];
@@ -12,12 +14,20 @@ interface SourcesState {
 
   load: () => Promise<void>;
   selectSource: (id: string) => void;
-  addM3uUrl: (name: string, url: string, onProgress?: (p: ImportProgress) => void) => Promise<Source>;
-  addM3uFile: (name: string, fileUri: string, onProgress?: (p: ImportProgress) => void) => Promise<Source>;
-  addXtream: (name: string, serverUrl: string, username: string, password: string) => Promise<Source>;
-  refreshSource: (id: string, onProgress?: (p: ImportProgress) => void) => Promise<void>;
+  addM3uUrl: (name: string, url: string, onProgress?: (p: ImportProgress) => void) => Promise<{ source: Source } & ImportStats>;
+  addM3uFile: (name: string, fileUri: string, onProgress?: (p: ImportProgress) => void) => Promise<{ source: Source } & ImportStats>;
+  addXtream: (name: string, serverUrl: string, username: string, password: string) => Promise<{ source: Source } & ImportStats>;
+  refreshSource: (id: string, onProgress?: (p: ImportProgress) => void) => Promise<ImportStats | void>;
   removeSource: (id: string) => Promise<void>;
   renameSource: (id: string, name: string) => Promise<void>;
+}
+
+function statsFromM3u(result: ImportResult): ImportStats {
+  return { channelCount: result.channelCount, ignored: result.ignored, summary: result.summary };
+}
+
+function statsFromXtream(result: XtreamImportResult): ImportStats {
+  return { channelCount: result.channelCount, ignored: result.ignored, summary: result.summary };
 }
 
 export const useSourcesStore = create<SourcesState>((set, get) => ({
@@ -41,15 +51,15 @@ export const useSourcesStore = create<SourcesState>((set, get) => ({
   addM3uUrl: async (name, url, onProgress) => {
     const source = await sourcesRepo.createSource({ type: 'm3u_url', name, url });
     set((state) => ({ sources: [...state.sources, source], selectedSourceId: source.id }));
-    await get().refreshSource(source.id, onProgress);
-    return source;
+    const result = await get().refreshSource(source.id, onProgress);
+    return { source, channelCount: result?.channelCount ?? 0, ignored: result?.ignored ?? 0, summary: result?.summary ?? '' };
   },
 
   addM3uFile: async (name, fileUri, onProgress) => {
     const source = await sourcesRepo.createSource({ type: 'm3u_file', name, fileUri });
     set((state) => ({ sources: [...state.sources, source], selectedSourceId: source.id }));
-    await get().refreshSource(source.id, onProgress);
-    return source;
+    const result = await get().refreshSource(source.id, onProgress);
+    return { source, channelCount: result?.channelCount ?? 0, ignored: result?.ignored ?? 0, summary: result?.summary ?? '' };
   },
 
   addXtream: async (name, serverUrl, username, password) => {
@@ -58,8 +68,9 @@ export const useSourcesStore = create<SourcesState>((set, get) => ({
     set({ refreshingSourceId: source.id });
     try {
       if (source.type !== 'xtream') throw new Error('unreachable');
-      await importXtreamSource(source);
+      const imported = await importXtreamSource(source);
       await get().load();
+      return { source, ...statsFromXtream(imported) };
     } catch (err) {
       await sourcesRepo.markSourceError(source.id, err instanceof Error ? err.message : 'Erreur inconnue');
       await get().load();
@@ -67,7 +78,6 @@ export const useSourcesStore = create<SourcesState>((set, get) => ({
     } finally {
       set({ refreshingSourceId: null });
     }
-    return source;
   },
 
   refreshSource: async (id, onProgress) => {
@@ -76,9 +86,14 @@ export const useSourcesStore = create<SourcesState>((set, get) => ({
     set({ refreshingSourceId: id });
     try {
       if (source.type === 'm3u_url' || source.type === 'm3u_file') {
-        await importM3uSource(source, onProgress);
-      } else if (source.type === 'xtream') {
-        await importXtreamSource(source);
+        const imported = await importM3uSource(source, onProgress);
+        await get().load();
+        return statsFromM3u(imported);
+      }
+      if (source.type === 'xtream') {
+        const imported = await importXtreamSource(source);
+        await get().load();
+        return statsFromXtream(imported);
       }
       await get().load();
     } catch (err) {

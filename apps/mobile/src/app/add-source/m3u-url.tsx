@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { ImportErrorBanner } from '@/components/ui/ImportErrorBanner';
 import { useSourcesStore } from '@/store/useSourcesStore';
 import { describeImportError, type FriendlyImportErrorInfo } from '@/utils/friendlyErrors';
+import { presentImportSummary } from '@/utils/presentImportSummary';
 import type { ImportProgress } from '@/services/m3u/importM3u';
 
 function progressLabel(progress: ImportProgress | null): string {
@@ -33,8 +34,8 @@ export default function AddM3uUrlScreen() {
     setError(null);
     setProgress({ phase: 'downloading' });
     try {
-      await addM3uUrl(name.trim() || 'Ma playlist', trimmedUrl, setProgress);
-      router.replace('/(tabs)/home');
+      const result = await addM3uUrl(name.trim() || 'Ma playlist', trimmedUrl, setProgress);
+      presentImportSummary(result.summary, () => router.replace('/(tabs)/home'));
     } catch (err) {
       setError(describeImportError(err, { url: trimmedUrl }));
       setProgress(null);

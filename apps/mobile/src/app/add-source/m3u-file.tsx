@@ -11,6 +11,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { useSourcesStore } from '@/store/useSourcesStore';
 import { describeImportError, type FriendlyImportErrorInfo } from '@/utils/friendlyErrors';
 import { ImportErrorBanner } from '@/components/ui/ImportErrorBanner';
+import { presentImportSummary } from '@/utils/presentImportSummary';
 import type { ImportProgress } from '@/services/m3u/importM3u';
 
 export default function AddM3uFileScreen() {
@@ -39,8 +40,8 @@ export default function AddM3uFileScreen() {
     setError(null);
     setProgress({ phase: 'downloading' });
     try {
-      await addM3uFile(name.trim() || pickedFile.name, pickedFile.uri, setProgress);
-      router.replace('/(tabs)/home');
+      const result = await addM3uFile(name.trim() || pickedFile.name, pickedFile.uri, setProgress);
+      presentImportSummary(result.summary, () => router.replace('/(tabs)/home'));
     } catch (err) {
       setError(describeImportError(err));
       setProgress(null);

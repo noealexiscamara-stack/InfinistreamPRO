@@ -8,6 +8,7 @@ import { colors, radius, spacing, typography } from '@/theme/tokens';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useSourcesStore } from '@/store/useSourcesStore';
+import { presentImportSummary } from '@/utils/presentImportSummary';
 
 function sourceTypeLabel(type: Source['type']): string {
   switch (type) {
@@ -74,7 +75,14 @@ export default function PlaylistsScreen() {
               <View style={styles.actions}>
                 <Pressable
                   hitSlop={10}
-                  onPress={() => refreshSource(item.id)}
+                  onPress={async () => {
+                    try {
+                      const result = await refreshSource(item.id);
+                      if (result?.summary) presentImportSummary(result.summary, () => undefined);
+                    } catch {
+                      /* lastError is persisted and shown on the row */
+                    }
+                  }}
                   disabled={refreshingSourceId === item.id}
                   style={styles.actionButton}
                 >

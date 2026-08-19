@@ -1,8 +1,8 @@
 import * as FileSystem from 'expo-file-system';
-import { parseM3u } from '@infiny-stream/shared';
+import { IPTV_CLIENT_USER_AGENT, parseM3u } from '@infiny-stream/shared';
 import { M3U_PARSE_CHUNK_SIZE } from '@infiny-stream/config';
 import type { M3uFileSource, M3uUrlSource } from '@infiny-stream/types';
-import { replaceSourceChannels } from '@/services/persistChannels';
+import { formatImportSummary, replaceSourceChannels } from '@/services/persistChannels';
 
 export interface ImportProgress {
   phase: 'downloading' | 'parsing' | 'saving';
@@ -12,6 +12,10 @@ export interface ImportProgress {
 export interface ImportResult {
   channelCount: number;
   categoryCount: number;
+  duplicatesRemoved: number;
+  rejected: number;
+  ignored: number;
+  summary: string;
   epgUrl?: string;
   warnings: string[];
 }
@@ -29,9 +33,9 @@ export class M3uImportError extends Error {
 }
 
 function httpStatusCause(status: number): string {
-  if (status === 401 || status === 403) return 'Accès refusé';
-  if (status === 404) return 'Playlist introuvable';
-  if (status >= 500) return 'Erreur serveur';
+  if (status === 401 || status === 403) return `Accès refusé (HTTP ${status})`;
+  if (status === 404) return `Playlist introuvable (HTTP ${status})`;
+  if (status >= 500) return `Erreur serveur (HTTP ${status})`;
   return `HTTP ${status}`;
 }
 
@@ -48,7 +52,9 @@ function downloadCause(err: unknown, url: string): string {
 async function downloadPlaylist(url: string): Promise<string> {
   let response: Response;
   try {
-    response = await fetch(url);
+    response = await fetch(url, {
+      headers: { 'User-Agent': IPTV_CLIENT_USER_AGENT, Accept: '*/*' },
+    });
   } catch (err) {
     throw new M3uImportError('Impossible de télécharger la playlist', downloadCause(err, url));
   }
@@ -80,9 +86,9 @@ async function readSourceContent(
 }
 
 /**
- * Downloads/reads, parses, and persists an M3U source. Replaces the
- * source's existing channels atomically (see replaceSourceChannels), so a
- * failed refresh never leaves the user with an empty channel list.
+ * Downloads/reads, parses, and persists an M3U source. Duplicate URLs and
+ * individual insert failures are counted as ignored rather than aborting
+ * the whole playlist.
  */
 export async function importM3uSource(
   source: M3uUrlSource | M3uFileSource,
@@ -106,11 +112,16 @@ export async function importM3uSource(
   }
 
   onProgress?.({ phase: 'saving' });
-  await replaceSourceChannels(source.id, parsed.channels);
+  const persisted = await replaceSourceChannels(source.id, parsed.channels);
+  const ignored = persisted.duplicatesRemoved + persisted.rejected;
 
   return {
-    channelCount: parsed.channels.length,
+    channelCount: persisted.imported,
     categoryCount: parsed.categories.length,
+    duplicatesRemoved: persisted.duplicatesRemoved,
+    rejected: persisted.rejected,
+    ignored,
+    summary: formatImportSummary(persisted.imported, ignored),
     epgUrl: parsed.epgUrl,
     warnings: parsed.warnings,
   };

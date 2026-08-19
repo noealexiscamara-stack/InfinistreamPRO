@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { ImportErrorBanner } from '@/components/ui/ImportErrorBanner';
 import { useSourcesStore } from '@/store/useSourcesStore';
 import { describeImportError, type FriendlyImportErrorInfo } from '@/utils/friendlyErrors';
+import { presentImportSummary } from '@/utils/presentImportSummary';
 
 export default function AddXtreamScreen() {
   const [name, setName] = useState('');
@@ -25,8 +26,8 @@ export default function AddXtreamScreen() {
     setError(null);
     setIsLoading(true);
     try {
-      await addXtream(name.trim() || 'Xtream', serverUrl.trim(), username.trim(), password);
-      router.replace('/(tabs)/home');
+      const result = await addXtream(name.trim() || 'Xtream', serverUrl.trim(), username.trim(), password);
+      presentImportSummary(result.summary, () => router.replace('/(tabs)/home'));
     } catch (err) {
       setError(describeImportError(err, { url: serverUrl.trim() }));
     } finally {

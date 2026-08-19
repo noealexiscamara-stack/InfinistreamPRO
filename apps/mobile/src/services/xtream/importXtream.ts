@@ -1,9 +1,13 @@
 import { XtreamClient, type XtreamAuthInfo } from '@infiny-stream/shared';
 import type { XtreamSource } from '@infiny-stream/types';
-import { replaceSourceChannels, type PersistableChannel } from '@/services/persistChannels';
+import { formatImportSummary, replaceSourceChannels, type PersistableChannel } from '@/services/persistChannels';
 
 export interface XtreamImportResult {
   channelCount: number;
+  duplicatesRemoved: number;
+  rejected: number;
+  ignored: number;
+  summary: string;
   auth: XtreamAuthInfo;
 }
 
@@ -19,9 +23,9 @@ function xtreamCauseForKind(
     case 'network':
       return 'Connexion impossible';
     case 'server_error':
-      return 'Le serveur a rencontré un problème';
+      return fallback || 'Erreur serveur';
     case 'malformed_response':
-      return 'Réponse inattendue';
+      return fallback || 'Réponse inattendue';
   }
 }
 
@@ -51,7 +55,7 @@ export async function verifyXtreamCredentials(
   const client = clientFor(credentials);
   const result = await client.authenticate();
   if (!result.ok) {
-    throw new XtreamConnectionError(result.error);
+    throw new XtreamConnectionError(result.error, result.message);
   }
   if (result.data.status !== 'ok') {
     throw new XtreamConnectionError(
@@ -75,13 +79,13 @@ export async function importXtreamSource(source: XtreamSource): Promise<XtreamIm
 
   const categoriesResult = await client.getLiveCategories();
   if (!categoriesResult.ok) {
-    throw new XtreamConnectionError(categoriesResult.error);
+    throw new XtreamConnectionError(categoriesResult.error, categoriesResult.message);
   }
   const categoryNameById = new Map(categoriesResult.data.map((c) => [c.categoryId, c.categoryName]));
 
   const streamsResult = await client.getLiveStreams();
   if (!streamsResult.ok) {
-    throw new XtreamConnectionError(streamsResult.error);
+    throw new XtreamConnectionError(streamsResult.error, streamsResult.message);
   }
 
   const channels: PersistableChannel[] = streamsResult.data.map((stream, index) => ({
@@ -94,7 +98,15 @@ export async function importXtreamSource(source: XtreamSource): Promise<XtreamIm
     sortIndex: index,
   }));
 
-  await replaceSourceChannels(source.id, channels);
+  const persisted = await replaceSourceChannels(source.id, channels);
+  const ignored = persisted.duplicatesRemoved + persisted.rejected;
 
-  return { channelCount: channels.length, auth };
+  return {
+    channelCount: persisted.imported,
+    duplicatesRemoved: persisted.duplicatesRemoved,
+    rejected: persisted.rejected,
+    ignored,
+    summary: formatImportSummary(persisted.imported, ignored),
+    auth,
+  };
 }

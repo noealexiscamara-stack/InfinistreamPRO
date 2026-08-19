@@ -1,3 +1,5 @@
+import { IPTV_CLIENT_USER_AGENT } from '../network/userAgent';
+
 export interface XtreamCredentials {
   serverUrl: string;
   username: string;
@@ -71,7 +73,9 @@ export class XtreamClient {
   private async request<T>(url: string): Promise<XtreamResult<T>> {
     let response: Response;
     try {
-      response = await this.fetchFn(url);
+      response = await this.fetchFn(url, {
+        headers: { 'User-Agent': IPTV_CLIENT_USER_AGENT, Accept: 'application/json,*/*' },
+      });
     } catch (err) {
       return { ok: false, error: 'network', message: err instanceof Error ? err.message : 'Erreur réseau' };
     }
@@ -80,7 +84,7 @@ export class XtreamClient {
       return { ok: false, error: 'invalid_credentials', message: 'Identifiants Xtream invalides' };
     }
     if (!response.ok) {
-      return { ok: false, error: 'server_error', message: `Le serveur a répondu ${response.status}` };
+      return { ok: false, error: 'server_error', message: `Erreur serveur (HTTP ${response.status})` };
     }
 
     try {
