@@ -11,5 +11,7 @@ export * from './playback/ChannelTierSwitcher';
 export * from './channels/qualityMarkers';
 export * from './channels/groupChannels';
 export * from './channels/dedupe';
+export * from './universes/classify';
+export * from './universes/series';
 export * from './network/userAgent';
 export * from './utils/id';

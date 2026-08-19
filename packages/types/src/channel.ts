@@ -16,6 +16,16 @@ export interface Channel {
   category?: string;
   /** Order the channel appeared in its source, for stable list rendering. */
   sortIndex: number;
+  /** live | movie | series | radio — inferred at import from playlist metadata. */
+  kind?: import('./universe').ContentKind;
+  plot?: string;
+  genre?: string;
+  rating?: number;
+  releaseDate?: string;
+  containerExtension?: string;
+  xtreamStreamId?: number;
+  xtreamSeriesId?: number;
+  xtreamEpisodeId?: string;
 }
 
 export interface ChannelCategory {
