@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,6 +16,8 @@ import { useHistoryStore } from '@/store/useHistoryStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useSubscriptionStore } from '@/store/useSubscriptionStore';
 import { listFavoriteChannels } from '@/services/favoritesHistoryRepository';
+import { getKindCounts } from '@/services/channelsRepository';
+import type { ContentKind } from '@infiny-stream/types';
 
 const FAVORITE_LOGO_SIZE = 72;
 const FAVORITE_ROW_LIMIT = 40;
@@ -31,18 +33,21 @@ export default function HomeScreen() {
   const subscriptionStatus = useSubscriptionStore((s) => s.status);
   const refreshSubscription = useSubscriptionStore((s) => s.refresh);
   const [favoriteChannels, setFavoriteChannels] = useState<Channel[]>([]);
+  const [kindCounts, setKindCounts] = useState<Record<ContentKind, number>>({
+    live: 0,
+    movie: 0,
+    series: 0,
+    radio: 0,
+  });
   const [refreshing, setRefreshing] = useState(false);
 
-  const channelCount = useMemo(
-    () => sources.reduce((total, source) => total + (source.channelCount ?? 0), 0),
-    [sources]
-  );
   const continueWatching = historyEntries[0];
 
   const reload = useCallback(async () => {
     await Promise.all([
       loadHistory(),
       listFavoriteChannels(FAVORITE_ROW_LIMIT).then(setFavoriteChannels),
+      getKindCounts().then(setKindCounts),
       isAuthenticated ? refreshSubscription().catch(() => undefined) : Promise.resolve(),
     ]);
   }, [loadHistory, isAuthenticated, refreshSubscription]);
@@ -64,13 +69,41 @@ export default function HomeScreen() {
     setRefreshing(false);
   }
 
-  function openLiveTv() {
-    if (sources.length === 1) {
-      router.push(`/playlists/${sources[0].id}`);
-      return;
-    }
-    router.push('/playlists');
+  function openUniverse(route: '/universe/live' | '/universe/movies' | '/universe/series' | '/universe/radios') {
+    router.push(route);
   }
+
+  const universeCards = [
+    kindCounts.live > 0 && {
+      icon: 'tv-outline' as const,
+      title: 'TV en direct',
+      meta: `${kindCounts.live} chaîne${kindCounts.live === 1 ? '' : 's'}`,
+      route: '/universe/live' as const,
+    },
+    kindCounts.movie > 0 && {
+      icon: 'film-outline' as const,
+      title: 'Films',
+      meta: `${kindCounts.movie} film${kindCounts.movie === 1 ? '' : 's'}`,
+      route: '/universe/movies' as const,
+    },
+    kindCounts.series > 0 && {
+      icon: 'albums-outline' as const,
+      title: 'Séries',
+      meta: `${kindCounts.series} entrée${kindCounts.series === 1 ? '' : 's'}`,
+      route: '/universe/series' as const,
+    },
+    kindCounts.radio > 0 && {
+      icon: 'radio-outline' as const,
+      title: 'Radios',
+      meta: `${kindCounts.radio} radio${kindCounts.radio === 1 ? '' : 's'}`,
+      route: '/universe/radios' as const,
+    },
+  ].filter(Boolean) as Array<{
+    icon: keyof typeof Ionicons.glyphMap;
+    title: string;
+    meta: string;
+    route: '/universe/live' | '/universe/movies' | '/universe/series' | '/universe/radios';
+  }>;
 
   return (
     <LinearGradient colors={[colors.background, colors.backgroundGlow, colors.background]} style={styles.gradient}>
@@ -94,12 +127,15 @@ export default function HomeScreen() {
 
           <Section title="Accès rapides">
             <View style={styles.quickGrid}>
-              <QuickAccess
-                icon="tv-outline"
-                title="TV en direct"
-                meta={channelCount > 0 ? `${channelCount} chaînes` : 'Aucune chaîne'}
-                onPress={openLiveTv}
-              />
+              {universeCards.map((card) => (
+                <QuickAccess
+                  key={card.route}
+                  icon={card.icon}
+                  title={card.title}
+                  meta={card.meta}
+                  onPress={() => openUniverse(card.route)}
+                />
+              ))}
               <QuickAccess
                 icon="heart-outline"
                 title="Favoris"

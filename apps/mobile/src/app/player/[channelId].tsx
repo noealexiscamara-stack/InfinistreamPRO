@@ -4,21 +4,27 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useVideoPlayer, VideoView, type VideoPlayerStatus } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
-import type { Channel } from '@infiny-stream/types';
+import type { Channel, GroupedChannel } from '@infiny-stream/types';
 import { NETWORK_QUALITY_LABELS } from '@infiny-stream/types';
 import { colors, networkQualityColor, radius, spacing, typography } from '@/theme/tokens';
 import { getChannelById, getChannels } from '@/services/channelsRepository';
+import { findGroupContaining, groupedFromChannels } from '@/services/channelGroups';
 import { recordHistory } from '@/services/favoritesHistoryRepository';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { PlayerController } from '@/services/playback/PlayerController';
+import { isXtreamSeriesPlaceholder } from '@/services/persistChannels';
+import { useRadioPlayback } from '@/services/playback/RadioPlaybackProvider';
 
 type PlayerScreenState = 'loading' | 'playing' | 'reconnecting' | 'error';
 
 export default function PlayerScreen() {
-  const { channelId } = useLocalSearchParams<{ channelId: string }>();
+  const { channelId: rawChannelId } = useLocalSearchParams<{ channelId: string }>();
+  const channelId = Array.isArray(rawChannelId) ? rawChannelId[0] : rawChannelId;
+
   const [channel, setChannel] = useState<Channel | null>(null);
-  const [siblings, setSiblings] = useState<Channel[]>([]);
+  const [group, setGroup] = useState<GroupedChannel | null>(null);
+  const [siblings, setSiblings] = useState<GroupedChannel[]>([]);
   const [screenState, setScreenState] = useState<PlayerScreenState>('loading');
   const [networkLabel, setNetworkLabel] = useState<{ quality: keyof typeof networkQualityColor; text: string }>({
     quality: 'medium',
@@ -27,66 +33,117 @@ export default function PlayerScreen() {
   const [controlsVisible, setControlsVisible] = useState(true);
 
   const qualityMode = useSettingsStore((s) => s.qualityMode);
-  const setQualityMode = useSettingsStore((s) => s.setQualityMode);
   const toggleFavorite = useFavoritesStore((s) => s.toggle);
   const isFavorite = useFavoritesStore((s) => s.isFavorite);
+  const { playRadio, stopRadio, activeChannel: activeRadio } = useRadioPlayback();
 
   const player = useVideoPlayer(null, (p) => {
     p.loop = false;
   });
+
   const controllerRef = useRef<PlayerController | null>(null);
   if (!controllerRef.current) {
     controllerRef.current = new PlayerController(player);
   }
 
-  // --- Load channel metadata + its siblings (for prev/next) ---
+  useEffect(() => {
+    return () => {
+      controllerRef.current?.dispose();
+      controllerRef.current = null;
+    };
+  }, []);
+
   useEffect(() => {
     if (!channelId) return;
     let cancelled = false;
+    const controller = controllerRef.current;
+    if (!controller) return;
 
     (async () => {
+      setScreenState('loading');
+      setChannel(null);
+      setGroup(null);
+      setSiblings([]);
+
       const ch = await getChannelById(channelId);
-      if (cancelled || !ch) return;
+      if (cancelled) return;
+      if (!ch) {
+        setScreenState('error');
+        return;
+      }
+      if (isXtreamSeriesPlaceholder(ch.streamUrl)) {
+        router.replace(`/universe/series/${ch.id}`);
+        return;
+      }
       setChannel(ch);
-      const list = await getChannels(ch.sourceId, { limit: 5000 });
-      if (!cancelled) setSiblings(list);
+
+      let streamUrl = ch.streamUrl;
+      let activeGroup: GroupedChannel | null = null;
+      let siblingGroups: GroupedChannel[] = [];
+
+      const isLive = !ch.kind || ch.kind === 'live';
+      if (isLive) {
+        const list = await getChannels(ch.sourceId, { kind: 'live', limit: 10000 });
+        if (cancelled) return;
+        siblingGroups = groupedFromChannels(list);
+        activeGroup = findGroupContaining(siblingGroups, ch.id) ?? null;
+        setSiblings(siblingGroups);
+        setGroup(activeGroup);
+        if (activeGroup) {
+          streamUrl = controller.attachChannelGroup(activeGroup, qualityMode);
+        }
+      }
+
+      if (cancelled) return;
+
+      if (ch.kind === 'radio') {
+        playRadio(ch);
+        setScreenState('playing');
+        recordHistory({
+          channelId: ch.id,
+          sourceId: ch.sourceId,
+          channelName: ch.name,
+          logoUrl: ch.logoUrl,
+        });
+        return;
+      }
+
+      stopRadio();
+
+      controller.setCallbacks({
+        onNetworkStateChange: (state) => {
+          setNetworkLabel({ quality: state.quality, text: NETWORK_QUALITY_LABELS[state.quality] });
+        },
+        onReconnecting: () => setScreenState('reconnecting'),
+        onReconnected: () => setScreenState('playing'),
+        onFatalError: () => setScreenState('error'),
+      });
+      controller.setMode(qualityMode);
+
+      try {
+        await controller.loadChannel(streamUrl);
+        if (!cancelled) setScreenState('playing');
+      } catch {
+        if (!cancelled) setScreenState('error');
+      }
+
+      recordHistory({
+        channelId: ch.id,
+        sourceId: ch.sourceId,
+        channelName: activeGroup?.name ?? ch.name,
+        logoUrl: activeGroup?.logoUrl ?? ch.logoUrl,
+      });
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [channelId]);
-
-  // --- Drive PlayerController once we know the channel ---
-  useEffect(() => {
-    const controller = controllerRef.current;
-    if (!controller || !channel) return;
-
-    controller.setCallbacks({
-      onNetworkStateChange: (state) => {
-        setNetworkLabel({ quality: state.quality, text: NETWORK_QUALITY_LABELS[state.quality] });
-      },
-      onReconnecting: () => setScreenState('reconnecting'),
-      onReconnected: () => setScreenState('playing'),
-      onFatalError: () => setScreenState('error'),
-    });
-    controller.setMode(qualityMode);
-    setScreenState('loading');
-    controller.loadChannel(channel.streamUrl).then(() => setScreenState('playing'));
-
-    recordHistory({ channelId: channel.id, sourceId: channel.sourceId, channelName: channel.name, logoUrl: channel.logoUrl });
-
-    return () => {
-      controller.dispose();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channel?.id]);
+  }, [channelId, playRadio, stopRadio]);
 
   useEffect(() => {
     controllerRef.current?.setMode(qualityMode);
   }, [qualityMode]);
 
-  // --- Player status -> stall/error detection ---
   useEffect(() => {
     const sub = player.addListener('statusChange', (event: { status: VideoPlayerStatus }) => {
       if (event.status === 'error') {
@@ -96,27 +153,50 @@ export default function PlayerScreen() {
     return () => sub.remove();
   }, [player]);
 
-  const currentIndex = useMemo(() => siblings.findIndex((c) => c.id === channel?.id), [siblings, channel]);
+  const currentIndex = useMemo(() => siblings.findIndex((g) => g.id === group?.id), [siblings, group]);
 
   const goToSibling = useCallback(
     (direction: 1 | -1) => {
       if (siblings.length === 0 || currentIndex === -1) return;
       const nextIndex = (currentIndex + direction + siblings.length) % siblings.length;
-      router.replace(`/player/${siblings[nextIndex].id}`);
+      router.replace(`/player/${siblings[nextIndex].tiers[0].channel.id}`);
     },
     [siblings, currentIndex]
   );
 
-  function handleRetry() {
-    if (!channel) return;
-    setScreenState('loading');
-    controllerRef.current?.loadChannel(channel.streamUrl).then(() => setScreenState('playing'));
+  function handleBack() {
+    if (channel?.kind === 'radio') {
+      router.back();
+      return;
+    }
+    router.back();
   }
+
+  function handleRetry() {
+    if (!channel || !controllerRef.current) return;
+    setScreenState('loading');
+    const streamUrl =
+      group && channel.kind !== 'radio'
+        ? controllerRef.current.attachChannelGroup(group, qualityMode)
+        : channel.streamUrl;
+    controllerRef.current.loadChannel(streamUrl).then(() => setScreenState('playing'));
+  }
+
+  const isRadio = channel?.kind === 'radio';
+  const showVideo = !isRadio;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Pressable style={styles.videoWrap} onPress={() => setControlsVisible((v) => !v)}>
-        <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls={false} />
+        {showVideo ? (
+          <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls={false} />
+        ) : (
+          <View style={styles.radioBackdrop}>
+            <Ionicons name="radio" size={72} color={colors.cyan} />
+            <Text style={styles.radioTitle}>{channel?.name}</Text>
+            <Text style={styles.radioHint}>Lecture en cours — vous pouvez naviguer ailleurs.</Text>
+          </View>
+        )}
 
         {screenState === 'error' && (
           <View style={styles.overlay}>
@@ -126,14 +206,14 @@ export default function PlayerScreen() {
               <Pressable style={styles.overlayButton} onPress={handleRetry}>
                 <Text style={styles.overlayButtonLabel}>Réessayer</Text>
               </Pressable>
-              <Pressable style={[styles.overlayButton, styles.overlayButtonGhost]} onPress={() => router.back()}>
+              <Pressable style={[styles.overlayButton, styles.overlayButtonGhost]} onPress={handleBack}>
                 <Text style={styles.overlayButtonLabel}>Retour</Text>
               </Pressable>
             </View>
           </View>
         )}
 
-        {(screenState === 'loading' || screenState === 'reconnecting') && (
+        {(screenState === 'loading' || screenState === 'reconnecting') && !isRadio && (
           <View style={styles.overlay}>
             <Text style={styles.overlayTitle}>{screenState === 'reconnecting' ? 'Reconnexion…' : 'Chargement…'}</Text>
           </View>
@@ -142,17 +222,19 @@ export default function PlayerScreen() {
         {controlsVisible && screenState !== 'error' && (
           <View style={styles.controls} pointerEvents="box-none">
             <View style={styles.topBar}>
-              <Pressable onPress={() => router.back()} hitSlop={12}>
+              <Pressable onPress={handleBack} hitSlop={12}>
                 <Ionicons name="chevron-down" size={26} color={colors.textPrimary} />
               </Pressable>
               <View style={styles.channelInfo}>
                 <Text style={styles.channelName} numberOfLines={1}>
-                  {channel?.name}
+                  {group?.name ?? channel?.name ?? activeRadio?.name}
                 </Text>
-                <View style={styles.networkRow}>
-                  <View style={[styles.dot, { backgroundColor: networkQualityColor[networkLabel.quality] }]} />
-                  <Text style={styles.networkText}>{networkLabel.text}</Text>
-                </View>
+                {!isRadio && (
+                  <View style={styles.networkRow}>
+                    <View style={[styles.dot, { backgroundColor: networkQualityColor[networkLabel.quality] }]} />
+                    <Text style={styles.networkText}>{networkLabel.text}</Text>
+                  </View>
+                )}
               </View>
               {channel && (
                 <Pressable onPress={() => toggleFavorite(channel.id, channel.sourceId)} hitSlop={12}>
@@ -165,21 +247,23 @@ export default function PlayerScreen() {
               )}
             </View>
 
-            <View style={styles.bottomBar}>
-              <Pressable style={styles.controlButton} onPress={() => goToSibling(-1)} hitSlop={12}>
-                <Ionicons name="play-skip-back" size={26} color={colors.textPrimary} />
-              </Pressable>
-              <Pressable
-                style={styles.playButton}
-                onPress={() => (player.playing ? player.pause() : player.play())}
-                hitSlop={12}
-              >
-                <Ionicons name={player.playing ? 'pause' : 'play'} size={30} color={colors.textPrimary} />
-              </Pressable>
-              <Pressable style={styles.controlButton} onPress={() => goToSibling(1)} hitSlop={12}>
-                <Ionicons name="play-skip-forward" size={26} color={colors.textPrimary} />
-              </Pressable>
-            </View>
+            {!isRadio && (
+              <View style={styles.bottomBar}>
+                <Pressable style={styles.controlButton} onPress={() => goToSibling(-1)} hitSlop={12}>
+                  <Ionicons name="play-skip-back" size={26} color={colors.textPrimary} />
+                </Pressable>
+                <Pressable
+                  style={styles.playButton}
+                  onPress={() => (player.playing ? player.pause() : player.play())}
+                  hitSlop={12}
+                >
+                  <Ionicons name={player.playing ? 'pause' : 'play'} size={30} color={colors.textPrimary} />
+                </Pressable>
+                <Pressable style={styles.controlButton} onPress={() => goToSibling(1)} hitSlop={12}>
+                  <Ionicons name="play-skip-forward" size={26} color={colors.textPrimary} />
+                </Pressable>
+              </View>
+            )}
           </View>
         )}
       </Pressable>
@@ -190,6 +274,9 @@ export default function PlayerScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#000' },
   videoWrap: { flex: 1, backgroundColor: '#000' },
+  radioBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.xl },
+  radioTitle: { ...typography.title, color: colors.textPrimary, textAlign: 'center' },
+  radioHint: { ...typography.body, color: colors.textSecondary, textAlign: 'center' },
   overlay: {
     position: 'absolute',
     top: 0,

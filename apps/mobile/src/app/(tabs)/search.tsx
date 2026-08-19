@@ -3,19 +3,20 @@ import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import type { Channel } from '@infiny-stream/types';
+import type { GroupedChannel } from '@infiny-stream/types';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 import { TextField } from '@/components/ui/TextField';
 import { ChannelRow } from '@/components/ui/ChannelRow';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { searchChannels } from '@/services/channelsRepository';
+import { groupedFromChannels, groupFavoriteChannel, groupHasFavorite } from '@/services/channelGroups';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
 
 const DEBOUNCE_MS = 250;
 
 export default function SearchScreen() {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Channel[]>([]);
+  const [results, setResults] = useState<GroupedChannel[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const toggleFavorite = useFavoritesStore((s) => s.toggle);
   const isFavorite = useFavoritesStore((s) => s.isFavorite);
@@ -33,7 +34,7 @@ export default function SearchScreen() {
 
     debounceTimer.current = setTimeout(async () => {
       const matches = await searchChannels(null, trimmed);
-      setResults(matches);
+      setResults(groupedFromChannels(matches));
       setHasSearched(true);
     }, DEBOUNCE_MS);
 
@@ -72,14 +73,17 @@ export default function SearchScreen() {
         data={results}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <ChannelRow
-            channel={item}
-            isFavorite={isFavorite(item.id)}
-            onPress={() => router.push(`/player/${item.id}`)}
-            onToggleFavorite={() => toggleFavorite(item.id, item.sourceId)}
-          />
-        )}
+        renderItem={({ item }) => {
+          const target = groupFavoriteChannel(item);
+          return (
+            <ChannelRow
+              group={item}
+              isFavorite={groupHasFavorite(item, isFavorite)}
+              onPress={() => router.push(`/player/${target.id}`)}
+              onToggleFavorite={() => toggleFavorite(target.id, target.sourceId)}
+            />
+          );
+        }}
       />
     </SafeAreaView>
   );

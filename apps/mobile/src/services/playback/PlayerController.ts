@@ -1,10 +1,12 @@
 import type { VideoPlayer, VideoSource } from 'expo-video';
 import {
   AdaptiveStreamingManager,
+  ChannelTierSwitcher,
   parseHlsMasterPlaylist,
+  QUALITY_MODE_PROFILES,
   type QualityDecision,
 } from '@infiny-stream/shared';
-import type { NetworkState, QualityMode, StreamVariant } from '@infiny-stream/types';
+import type { GroupedChannel, NetworkState, QualityMode, StreamVariant } from '@infiny-stream/types';
 import { QUALITY_REEVALUATION_INTERVAL_MS } from '@infiny-stream/config';
 import { NetworkMonitor } from '@/services/network/NetworkMonitor';
 
@@ -46,6 +48,7 @@ export interface PlayerControllerCallbacks {
 }
 
 const RECONNECT_BACKOFF_MS = [0, 1000, 2000, 5000, 10000];
+const TIER_REEVALUATION_INTERVAL_MS = 5000;
 
 async function fetchText(url: string, timeoutMs = 8000): Promise<{ text: string; elapsedMs: number }> {
   const controller = new AbortController();
@@ -65,6 +68,8 @@ export class PlayerController {
   private readonly player: VideoPlayer;
   private callbacks: PlayerControllerCallbacks = {};
   private reevaluationTimer: ReturnType<typeof setInterval> | null = null;
+  private tierTimer: ReturnType<typeof setInterval> | null = null;
+  private tierSwitcher: ChannelTierSwitcher | null = null;
   private reconnectAttempt = 0;
   private isReconnecting = false;
   private currentStreamUrl = '';
@@ -81,7 +86,16 @@ export class PlayerController {
 
   setMode(mode: QualityMode): void {
     this.adm.setMode(mode);
+    this.tierSwitcher?.setMaxHeightLabel(QUALITY_MODE_PROFILES[mode].maxHeightLabel);
     this.reevaluate(true);
+    this.reevaluateTier();
+  }
+
+  attachChannelGroup(group: GroupedChannel, mode: QualityMode): string {
+    this.tierSwitcher = new ChannelTierSwitcher(group, {
+      maxHeightLabel: QUALITY_MODE_PROFILES[mode].maxHeightLabel,
+    });
+    return this.tierSwitcher.currentTier().channel.streamUrl;
   }
 
   /**
@@ -92,8 +106,17 @@ export class PlayerController {
    * — never fabricating quality levels the source doesn't offer.
    */
   async loadChannel(directUrl: string): Promise<void> {
+    if (this.disposed) return;
     this.reconnectAttempt = 0;
     this.stopReevaluationLoop();
+    this.stopTierLoop();
+    await this.applyStreamUrl(directUrl);
+    if (this.disposed) return;
+    this.startReevaluationLoop();
+    this.startTierLoop();
+  }
+
+  private async applyStreamUrl(directUrl: string): Promise<void> {
 
     let variants: StreamVariant[] = [];
     try {
@@ -115,21 +138,37 @@ export class PlayerController {
 
     const decision = this.adm.decide(Date.now());
     await this.setSource(decision.variant.url);
-    this.startReevaluationLoop();
   }
 
   private async setSource(url: string): Promise<void> {
+    if (this.disposed) return;
     this.currentStreamUrl = url;
     this.lastKnownSafeUrl = url;
     const source: VideoSource = { uri: url };
-    // expo-video: replacing the source resets playback position, which is
-    // expected for a *live* channel (there is no "resume position" to
-    // preserve). For catch-up/VOD this would need currentTime handling.
     this.player.replace(source);
-    this.player.play();
+    if (!this.disposed) this.player.play();
+  }
+
+  private startTierLoop(): void {
+    this.stopTierLoop();
+    this.tierTimer = setInterval(() => this.reevaluateTier(), TIER_REEVALUATION_INTERVAL_MS);
+  }
+
+  private stopTierLoop(): void {
+    if (this.tierTimer) clearInterval(this.tierTimer);
+    this.tierTimer = null;
+  }
+
+  private reevaluateTier(): void {
+    if (this.disposed || !this.tierSwitcher) return;
+    const decision = this.tierSwitcher.decide(Date.now());
+    if (decision.changed && decision.tier.channel.streamUrl !== this.currentStreamUrl) {
+      void this.applyStreamUrl(decision.tier.channel.streamUrl);
+    }
   }
 
   private startReevaluationLoop(): void {
+    this.stopReevaluationLoop();
     this.reevaluationTimer = setInterval(() => this.reevaluate(false), QUALITY_REEVALUATION_INTERVAL_MS);
   }
 
@@ -154,6 +193,7 @@ export class PlayerController {
     const kbps = Math.round((bytes * 8) / elapsedMs);
     const sample = { timestampMs: Date.now(), throughputKbps: kbps, fromStall: false };
     this.adm.reportSample({ ...sample, connectionType: 'unknown' });
+    this.tierSwitcher?.reportThroughput(kbps);
     NetworkMonitor.reportSample(sample);
   }
 
@@ -171,8 +211,10 @@ export class PlayerController {
     const current = this.adm.getNetworkState(now).estimatedThroughputKbps;
     const guessedKbps = Math.max(150, Math.round(current * 0.5));
     this.adm.reportStall(guessedKbps, now);
+    this.tierSwitcher?.reportStall(now);
     NetworkMonitor.reportStall(guessedKbps, now);
     this.reevaluate(true);
+    this.reevaluateTier();
   }
 
   /**
@@ -198,6 +240,16 @@ export class PlayerController {
     if (this.disposed) return;
 
     try {
+      if (this.tierSwitcher) {
+        const failover = this.tierSwitcher.reportTierDead(Date.now());
+        if (failover.changed) {
+          await this.applyStreamUrl(failover.tier.channel.streamUrl);
+          this.isReconnecting = false;
+          this.reconnectAttempt = 0;
+          this.callbacks.onReconnected?.();
+          return;
+        }
+      }
       // On repeated failures, also nudge the quality decision down —
       // the failure itself is evidence the current rendition isn't safe.
       if (this.reconnectAttempt >= 2) {
@@ -219,5 +271,6 @@ export class PlayerController {
   dispose(): void {
     this.disposed = true;
     this.stopReevaluationLoop();
+    this.stopTierLoop();
   }
 }

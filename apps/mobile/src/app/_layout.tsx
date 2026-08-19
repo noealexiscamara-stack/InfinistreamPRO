@@ -14,6 +14,7 @@ import { useNetworkMonitorBootstrap } from '@/store/useNetworkStore';
 import { useAuthStore, handleUnauthorizedSession } from '@/store/useAuthStore';
 import { useConfigStore } from '@/store/useConfigStore';
 import { setUnauthorizedHandler } from '@/services/api/unauthorizedHandler';
+import { RadioPlaybackProvider } from '@/services/playback/RadioPlaybackProvider';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   /* no-op: fine if it was already hidden */
@@ -53,25 +54,32 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
-      <StatusBar style="light" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: colors.background },
-          animation: 'fade',
-        }}
-      >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="onboarding/index" />
-        <Stack.Screen name="login" options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="register" options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="player/[channelId]" options={{ animation: 'fade', presentation: 'fullScreenModal' }} />
-        <Stack.Screen name="add-source/index" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-        <Stack.Screen name="add-source/m3u-url" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-        <Stack.Screen name="add-source/m3u-file" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-        <Stack.Screen name="add-source/xtream" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-      </Stack>
+      <RadioPlaybackProvider>
+        <StatusBar style="light" />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.background },
+            animation: 'fade',
+          }}
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen name="onboarding/index" />
+          <Stack.Screen name="login" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="register" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="universe/live" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="universe/movies" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="universe/radios" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="universe/series/index" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="universe/series/[seriesId]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="player/[channelId]" options={{ animation: 'fade', presentation: 'fullScreenModal' }} />
+          <Stack.Screen name="add-source/index" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="add-source/m3u-url" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="add-source/m3u-file" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="add-source/xtream" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+        </Stack>
+      </RadioPlaybackProvider>
     </GestureHandlerRootView>
   );
 }

@@ -1,61 +1,71 @@
-import { useEffect, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import type { ChannelCategory, GroupedChannel } from '@infiny-stream/types';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 import { ChannelRow } from '@/components/ui/ChannelRow';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { getCategories, getChannels } from '@/services/channelsRepository';
+import { UniverseHeader } from '@/components/universe/UniverseHeader';
+import { getCategories, getAllChannelsByKind, getChannels } from '@/services/channelsRepository';
 import { groupedFromChannels, groupFavoriteChannel, groupHasFavorite } from '@/services/channelGroups';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
 import { useSourcesStore } from '@/store/useSourcesStore';
 
-const PAGE_SIZE = 5000;
+const PAGE_SIZE = 10000;
 
-export default function PlaylistChannelsScreen() {
-  const { id: rawId } = useLocalSearchParams<{ id: string }>();
-  const id = Array.isArray(rawId) ? rawId[0] : rawId;
-  const source = useSourcesStore((s) => s.sources.find((src) => src.id === id));
+export default function LiveUniverseScreen() {
+  const sources = useSourcesStore((s) => s.sources);
   const toggleFavorite = useFavoritesStore((s) => s.toggle);
   const isFavorite = useFavoritesStore((s) => s.isFavorite);
+  const { width } = useWindowDimensions();
 
   const [categories, setCategories] = useState<ChannelCategory[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>(undefined);
   const [channels, setChannels] = useState<GroupedChannel[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!id) return;
-    getCategories(id).then(setCategories);
-  }, [id]);
+  const primarySourceId = sources[0]?.id;
 
   useEffect(() => {
-    if (!id) return;
+    if (!primarySourceId) {
+      setCategories([]);
+      return;
+    }
+    getCategories(primarySourceId, 'live').then(setCategories);
+  }, [primarySourceId]);
+
+  const reload = useCallback(async () => {
     setLoading(true);
-    getChannels(id, { category: selectedCategory, limit: PAGE_SIZE })
-      .then((rows) => setChannels(groupedFromChannels(rows)))
-      .finally(() => setLoading(false));
-  }, [id, selectedCategory]);
+    try {
+      let rows;
+      if (primarySourceId && selectedCategory) {
+        rows = await getChannels(primarySourceId, { kind: 'live', category: selectedCategory, limit: PAGE_SIZE });
+      } else {
+        rows = await getAllChannelsByKind('live', PAGE_SIZE);
+      }
+      setChannels(groupedFromChannels(rows));
+    } finally {
+      setLoading(false);
+    }
+  }, [primarySourceId, selectedCategory]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  const numColumns = useMemo(() => (width >= 900 ? 2 : 1), [width]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
-        </Pressable>
-        <Text style={styles.title} numberOfLines={1}>
-          {source?.name ?? 'Playlist'}
-        </Text>
-        <View style={{ width: 24 }} />
-      </View>
+      <UniverseHeader title="TV en direct" />
 
       {categories.length > 0 && (
         <FlatList
           horizontal
           showsHorizontalScrollIndicator={false}
-          data={[{ id: 'all', name: 'Toutes', channelCount: 0, sourceId: id ?? '' }, ...categories]}
+          data={[{ id: 'all', name: 'Toutes', channelCount: 0, sourceId: primarySourceId ?? '' }, ...categories]}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.categoryList}
           renderItem={({ item }) => {
@@ -73,44 +83,39 @@ export default function PlaylistChannelsScreen() {
       )}
 
       {!loading && channels.length === 0 ? (
-        <EmptyState icon="tv-outline" title="Aucune chaîne" message="Cette catégorie est vide, ou la playlist n'a pas encore été chargée." />
-      ) : !loading ? (
+        <EmptyState icon="tv-outline" title="Aucune chaîne" message="Importez une playlist pour commencer." />
+      ) : (
         <FlatList
           data={channels}
+          key={numColumns}
+          numColumns={numColumns}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
+          initialNumToRender={24}
+          maxToRenderPerBatch={24}
+          windowSize={7}
+          removeClippedSubviews
           renderItem={({ item }) => {
             const target = groupFavoriteChannel(item);
             return (
-              <ChannelRow
-                group={item}
-                isFavorite={groupHasFavorite(item, isFavorite)}
-                onPress={() => router.push(`/player/${target.id}`)}
-                onToggleFavorite={() => toggleFavorite(target.id, target.sourceId)}
-              />
+              <View style={numColumns > 1 ? styles.gridCell : undefined}>
+                <ChannelRow
+                  group={item}
+                  isFavorite={groupHasFavorite(item, isFavorite)}
+                  onPress={() => router.push(`/player/${target.id}`)}
+                  onToggleFavorite={() => toggleFavorite(target.id, target.sourceId)}
+                />
+              </View>
             );
           }}
-          initialNumToRender={20}
-          maxToRenderPerBatch={20}
-          windowSize={7}
-          removeClippedSubviews
         />
-      ) : null}
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
-  },
-  title: { ...typography.headline, color: colors.textPrimary, flex: 1, textAlign: 'center' },
   categoryList: { paddingHorizontal: spacing.lg, gap: spacing.sm, paddingBottom: spacing.md },
   categoryPill: {
     paddingVertical: spacing.xs,
@@ -124,4 +129,5 @@ const styles = StyleSheet.create({
   categoryLabel: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
   categoryLabelSelected: { color: colors.textPrimary },
   list: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxxl },
+  gridCell: { flex: 1 },
 });

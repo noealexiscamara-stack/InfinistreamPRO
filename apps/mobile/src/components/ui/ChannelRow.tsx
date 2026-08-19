@@ -1,11 +1,12 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import type { Channel } from '@infiny-stream/types';
+import type { GroupedChannel } from '@infiny-stream/types';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
+import { ladderBadge } from '@/services/channelGroups';
 
 interface ChannelRowProps {
-  channel: Channel;
+  group: GroupedChannel;
   isFavorite?: boolean;
   onPress: () => void;
   onToggleFavorite?: () => void;
@@ -18,23 +19,32 @@ interface ChannelRowProps {
  * progressive/lazy logo loading rather than blocking the row on the
  * network (product rule #8).
  */
-export function ChannelRow({ channel, isFavorite, onPress, onToggleFavorite }: ChannelRowProps) {
+export function ChannelRow({ group, isFavorite, onPress, onToggleFavorite }: ChannelRowProps) {
+  const badge = ladderBadge(group);
+
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
       <View style={styles.logoWrap}>
-        {channel.logoUrl ? (
-          <Image source={{ uri: channel.logoUrl }} style={styles.logo} contentFit="contain" cachePolicy="disk" transition={150} />
+        {group.logoUrl ? (
+          <Image source={{ uri: group.logoUrl }} style={styles.logo} contentFit="contain" cachePolicy="disk" transition={150} />
         ) : (
           <Ionicons name="tv-outline" size={20} color={colors.textTertiary} />
         )}
       </View>
       <View style={styles.info}>
-        <Text style={styles.name} numberOfLines={1}>
-          {channel.name}
-        </Text>
-        {!!channel.groupTitle && (
+        <View style={styles.nameRow}>
+          <Text style={styles.name} numberOfLines={1}>
+            {group.name}
+          </Text>
+          {!!badge && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeLabel}>{badge}</Text>
+            </View>
+          )}
+        </View>
+        {!!group.groupTitle && (
           <Text style={styles.meta} numberOfLines={1}>
-            {channel.groupTitle}
+            {group.groupTitle}
           </Text>
         )}
       </View>
@@ -77,9 +87,30 @@ const styles = StyleSheet.create({
   info: {
     flex: 1,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   name: {
     ...typography.bodyStrong,
     color: colors.textPrimary,
+    flexShrink: 1,
+  },
+  badge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  badgeLabel: {
+    ...typography.label,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    color: colors.brand,
+    textTransform: 'uppercase',
   },
   meta: {
     ...typography.caption,
