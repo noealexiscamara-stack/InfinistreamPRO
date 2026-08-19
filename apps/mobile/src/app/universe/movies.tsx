@@ -9,15 +9,9 @@ import { colors, radius, spacing, typography } from '@/theme/tokens';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { UniverseHeader } from '@/components/universe/UniverseHeader';
 import { getAllChannelsByKind } from '@/services/channelsRepository';
+import { formatDisplayRating } from '@/services/xtream/mapXtreamCatalog';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
-
-function formatMeta(item: Channel): string | null {
-  const parts: string[] = [];
-  if (item.genre) parts.push(item.genre);
-  if (item.rating != null) parts.push(String(item.rating));
-  if (item.releaseDate) parts.push(item.releaseDate.slice(0, 4));
-  return parts.length > 0 ? parts.join(' · ') : null;
-}
+import { useSourcesStore } from '@/store/useSourcesStore';
 
 export default function MoviesUniverseScreen() {
   const { width } = useWindowDimensions();
@@ -25,6 +19,7 @@ export default function MoviesUniverseScreen() {
   const tileWidth = (width - spacing.md * 2 - spacing.sm * (numColumns - 1)) / numColumns;
 
   const [movies, setMovies] = useState<Channel[]>([]);
+  const hasXtreamSource = useSourcesStore((s) => s.sources.some((src) => src.type === 'xtream'));
   const toggleFavorite = useFavoritesStore((s) => s.toggle);
   const isFavorite = useFavoritesStore((s) => s.isFavorite);
 
@@ -36,12 +31,16 @@ export default function MoviesUniverseScreen() {
     reload();
   }, [reload]);
 
+  const emptyMessage = hasXtreamSource
+    ? 'Ce compte Xtream ne propose pas de films, ou le catalogue VOD est indisponible pour le moment.'
+    : 'Les films de vos playlists apparaîtront ici.';
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <UniverseHeader title="Films" />
 
       {movies.length === 0 ? (
-        <EmptyState icon="film-outline" title="Aucun film" message="Les films de vos playlists apparaîtront ici." />
+        <EmptyState icon="film-outline" title="Aucun film" message={emptyMessage} />
       ) : (
         <FlatList
           data={movies}
@@ -55,7 +54,7 @@ export default function MoviesUniverseScreen() {
           windowSize={5}
           removeClippedSubviews
           renderItem={({ item }) => {
-            const meta = formatMeta(item);
+            const ratingLabel = formatDisplayRating(item.rating);
             return (
               <Pressable style={[styles.tile, { width: tileWidth }]} onPress={() => router.push(`/player/${item.id}`)}>
                 <View style={styles.posterWrap}>
@@ -66,15 +65,16 @@ export default function MoviesUniverseScreen() {
                       {item.name}
                     </Text>
                   )}
+                  {ratingLabel ? (
+                    <View style={styles.ratingBadge}>
+                      <Ionicons name="star" size={11} color={colors.background} />
+                      <Text style={styles.ratingText}>{ratingLabel}</Text>
+                    </View>
+                  ) : null}
                 </View>
                 <Text style={styles.tileTitle} numberOfLines={2}>
                   {item.name}
                 </Text>
-                {!!meta && (
-                  <Text style={styles.tileMeta} numberOfLines={1}>
-                    {meta}
-                  </Text>
-                )}
                 <Pressable hitSlop={10} style={styles.favBtn} onPress={() => toggleFavorite(item.id, item.sourceId)}>
                   <Ionicons
                     name={isFavorite(item.id) ? 'heart' : 'heart-outline'}
@@ -107,7 +107,19 @@ const styles = StyleSheet.create({
   },
   poster: { width: '100%', height: '100%' },
   fallbackTitle: { ...typography.caption, color: colors.textSecondary, textAlign: 'center' },
+  ratingBadge: {
+    position: 'absolute',
+    bottom: spacing.xs,
+    right: spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 3,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+  },
+  ratingText: { ...typography.label, color: colors.textPrimary, fontWeight: '700' },
   tileTitle: { ...typography.caption, color: colors.textPrimary, marginTop: spacing.xs },
-  tileMeta: { ...typography.label, color: colors.textTertiary, marginTop: 2 },
   favBtn: { position: 'absolute', top: spacing.xs, right: spacing.xs },
 });

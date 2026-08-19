@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { Stack, router } from 'expo-router';
-import { View } from 'react-native';
+import { Stack, router, type ErrorBoundaryProps } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { colors } from '@/theme/tokens';
-import { getDatabase } from '@/utils/db';
+import { StartupFailureScreen } from '@/components/startup/StartupFailureScreen';
+import { deleteLocalDatabase, getDatabase, resetDatabaseConnection } from '@/utils/db';
 import { useSourcesStore } from '@/store/useSourcesStore';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
 import { useHistoryStore } from '@/store/useHistoryStore';
@@ -20,8 +20,87 @@ SplashScreen.preventAutoHideAsync().catch(() => {
   /* no-op: fine if it was already hidden */
 });
 
+export class BootstrapError extends Error {
+  readonly step: string;
+
+  constructor(step: string, message: string, cause?: unknown) {
+    super(message);
+    this.name = 'BootstrapError';
+    this.step = step;
+    if (cause instanceof Error && cause.stack) {
+      this.stack = cause.stack;
+    }
+  }
+}
+
+interface BootFailure {
+  step: string;
+  message: string;
+}
+
+type BootPhase = 'booting' | 'ready' | 'failed';
+
+async function runBootStep<T>(step: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    throw new BootstrapError(step, message, cause);
+  }
+}
+
+async function bootstrapApp(): Promise<void> {
+  await runBootStep('Base de données locale', () => getDatabase());
+  await Promise.all([
+    runBootStep('Playlists', () => useSourcesStore.getState().load()),
+    runBootStep('Favoris', () => useFavoritesStore.getState().load()),
+    runBootStep('Historique', () => useHistoryStore.getState().load()),
+    runBootStep('Configuration', () => useConfigStore.getState().refresh()),
+    runBootStep('Session', () => useAuthStore.getState().hydrate()),
+  ]);
+}
+
+function failureFromError(error: unknown, fallbackStep = 'Inconnue'): BootFailure {
+  if (error instanceof BootstrapError) {
+    return { step: error.step, message: error.message };
+  }
+  if (error instanceof Error) {
+    return { step: fallbackStep, message: error.message };
+  }
+  return { step: fallbackStep, message: String(error) };
+}
+
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  const [isResetting, setIsResetting] = useState(false);
+  const failure = failureFromError(error, 'Affichage');
+
+  const handleReset = useCallback(async () => {
+    setIsResetting(true);
+    try {
+      await deleteLocalDatabase();
+      retry();
+    } catch (resetError) {
+      console.error('Failed to reset local database from ErrorBoundary', resetError);
+    } finally {
+      setIsResetting(false);
+    }
+  }, [retry]);
+
+  return (
+    <StartupFailureScreen
+      step={failure.step}
+      message={failure.message}
+      onRetry={retry}
+      onReset={() => void handleReset()}
+      isRetrying={isResetting}
+    />
+  );
+}
+
 export default function RootLayout() {
-  const [isReady, setIsReady] = useState(false);
+  const [phase, setPhase] = useState<BootPhase>('booting');
+  const [failure, setFailure] = useState<BootFailure | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
   useNetworkMonitorBootstrap();
 
   useEffect(() => {
@@ -32,24 +111,67 @@ export default function RootLayout() {
     });
   }, []);
 
-  const bootstrap = useCallback(async () => {
-    await getDatabase();
-    await Promise.all([
-      useSourcesStore.getState().load(),
-      useFavoritesStore.getState().load(),
-      useHistoryStore.getState().load(),
-      useConfigStore.getState().refresh(),
-      useAuthStore.getState().hydrate(),
-    ]);
-    setIsReady(true);
+  const startBootstrap = useCallback(async () => {
+    setPhase('booting');
+    setFailure(null);
+    try {
+      await bootstrapApp();
+      setPhase('ready');
+    } catch (error) {
+      console.error('Bootstrap failed', error);
+      setFailure(failureFromError(error));
+      setPhase('failed');
+    }
   }, []);
 
   useEffect(() => {
-    bootstrap().finally(() => SplashScreen.hideAsync().catch(() => undefined));
-  }, [bootstrap]);
+    void startBootstrap();
+  }, [startBootstrap]);
 
-  if (!isReady) {
-    return <View style={{ flex: 1, backgroundColor: colors.background }} />;
+  useEffect(() => {
+    if (phase === 'ready' || phase === 'failed') {
+      SplashScreen.hideAsync().catch(() => undefined);
+    }
+  }, [phase]);
+
+  const handleRetry = useCallback(async () => {
+    setIsRetrying(true);
+    resetDatabaseConnection();
+    try {
+      await startBootstrap();
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [startBootstrap]);
+
+  const handleReset = useCallback(async () => {
+    setIsRetrying(true);
+    try {
+      await deleteLocalDatabase();
+      await startBootstrap();
+    } catch (error) {
+      console.error('Local database reset failed', error);
+      setFailure(failureFromError(error, 'Réinitialisation'));
+      setPhase('failed');
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [startBootstrap]);
+
+  if (phase === 'failed' && failure) {
+    return (
+      <StartupFailureScreen
+        step={failure.step}
+        message={failure.message}
+        onRetry={() => void handleRetry()}
+        onReset={() => void handleReset()}
+        isRetrying={isRetrying}
+      />
+    );
+  }
+
+  if (phase !== 'ready') {
+    return null;
   }
 
   return (

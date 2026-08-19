@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Image } from 'expo-image';
@@ -11,15 +11,20 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { UniverseHeader } from '@/components/universe/UniverseHeader';
 import { getAllChannelsByKind, getXtreamSeriesCatalog } from '@/services/channelsRepository';
 import { isXtreamSeriesPlaceholder } from '@/services/persistChannels';
+import { formatDisplayRating } from '@/services/xtream/mapXtreamCatalog';
 
 interface SeriesRow {
   id: string;
   title: string;
   logoUrl?: string;
-  meta: string;
+  ratingLabel: string | null;
 }
 
 export default function SeriesUniverseScreen() {
+  const { width } = useWindowDimensions();
+  const numColumns = useMemo(() => (width >= 1200 ? 5 : width >= 900 ? 4 : width >= 600 ? 3 : 2), [width]);
+  const tileWidth = (width - spacing.md * 2 - spacing.sm * (numColumns - 1)) / numColumns;
+
   const [rows, setRows] = useState<SeriesRow[]>([]);
   const [unparsed, setUnparsed] = useState<Channel[]>([]);
 
@@ -36,15 +41,13 @@ export default function SeriesUniverseScreen() {
         id: s.id,
         title: s.title,
         logoUrl: s.logoUrl,
-        meta: `${s.seasons.length} saison${s.seasons.length === 1 ? '' : 's'}`,
+        ratingLabel: null,
       })),
       ...xtreamCatalog.map((s) => ({
         id: s.id,
         title: s.name,
         logoUrl: s.logoUrl,
-        meta:
-          [s.genre, s.rating != null ? String(s.rating) : null, s.releaseDate?.slice(0, 4)].filter(Boolean).join(' · ') ||
-          'Xtream',
+        ratingLabel: formatDisplayRating(s.rating),
       })),
     ];
 
@@ -67,8 +70,11 @@ export default function SeriesUniverseScreen() {
       ) : (
         <FlatList
           data={rows}
+          numColumns={numColumns}
+          key={numColumns}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={styles.grid}
+          columnWrapperStyle={numColumns > 1 ? styles.row : undefined}
           ListFooterComponent={
             unparsed.length > 0 ? (
               <View style={styles.unparsedSection}>
@@ -85,26 +91,31 @@ export default function SeriesUniverseScreen() {
               </View>
             ) : null
           }
-          initialNumToRender={20}
-          maxToRenderPerBatch={20}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
           windowSize={7}
           removeClippedSubviews
           renderItem={({ item }) => (
-            <Pressable style={styles.seriesRow} onPress={() => router.push(`/universe/series/${item.id}`)}>
-              <View style={styles.logoWrap}>
+            <Pressable
+              style={[styles.tile, { width: tileWidth }]}
+              onPress={() => router.push(`/universe/series/${item.id}`)}
+            >
+              <View style={styles.coverWrap}>
                 {item.logoUrl ? (
-                  <Image source={{ uri: item.logoUrl }} style={styles.logo} contentFit="contain" cachePolicy="disk" />
+                  <Image source={{ uri: item.logoUrl }} style={styles.cover} contentFit="cover" cachePolicy="disk" />
                 ) : (
-                  <Ionicons name="albums-outline" size={22} color={colors.textTertiary} />
+                  <Ionicons name="albums-outline" size={28} color={colors.textTertiary} />
                 )}
+                {item.ratingLabel ? (
+                  <View style={styles.ratingBadge}>
+                    <Ionicons name="star" size={11} color={colors.background} />
+                    <Text style={styles.ratingText}>{item.ratingLabel}</Text>
+                  </View>
+                ) : null}
               </View>
-              <View style={styles.copy}>
-                <Text style={styles.seriesTitle} numberOfLines={1}>
-                  {item.title}
-                </Text>
-                <Text style={styles.seriesMeta}>{item.meta}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+              <Text style={styles.tileTitle} numberOfLines={2}>
+                {item.title}
+              </Text>
             </Pressable>
           )}
         />
@@ -115,29 +126,33 @@ export default function SeriesUniverseScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
-  list: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxxl },
-  seriesRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+  grid: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxxl, gap: spacing.sm },
+  row: { gap: spacing.sm },
+  tile: { marginBottom: spacing.md },
+  coverWrap: {
+    aspectRatio: 2 / 3,
     borderRadius: radius.md,
-  },
-  logoWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.sm,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  logo: { width: 40, height: 40 },
-  copy: { flex: 1 },
-  seriesTitle: { ...typography.bodyStrong, color: colors.textPrimary },
-  seriesMeta: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  unparsedSection: { marginTop: spacing.xl, gap: spacing.xs, paddingHorizontal: spacing.sm },
+  cover: { width: '100%', height: '100%' },
+  ratingBadge: {
+    position: 'absolute',
+    bottom: spacing.xs,
+    right: spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 3,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+  },
+  ratingText: { ...typography.label, color: colors.textPrimary, fontWeight: '700' },
+  tileTitle: { ...typography.caption, color: colors.textPrimary, marginTop: spacing.xs },
+  unparsedSection: { marginTop: spacing.xl, gap: spacing.xs, width: '100%' },
   unparsedTitle: { ...typography.headline, color: colors.textPrimary },
   unparsedHint: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.sm },
   unparsedRow: {

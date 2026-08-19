@@ -12,7 +12,6 @@ export * from './channels/qualityMarkers';
 export * from './channels/groupChannels';
 export * from './channels/dedupe';
 export * from './content/classify';
-export * from './content/groupSeries';
 export * from './universes/classify';
 export * from './universes/series';
 export * from './network/userAgent';

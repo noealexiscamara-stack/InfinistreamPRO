@@ -5,8 +5,8 @@ import {
   isXtreamSeriesPlaceholder,
   upsertSeriesEpisodes,
   xtreamSeriesPlaceholderUrl,
-  type PersistableChannel,
 } from '@/services/persistChannels';
+import { mapXtreamSeriesEpisodes } from '@/services/xtream/mapXtreamCatalog';
 
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24;
 
@@ -64,20 +64,7 @@ async function persistEpisodes(
   info: XtreamSeriesInfo
 ): Promise<void> {
   const client = clientFor(source);
-  const episodes: PersistableChannel[] = info.episodes.map((ep, index) => ({
-    name: ep.title
-      ? `${seriesTitle} S${String(ep.season).padStart(2, '0')}E${String(ep.episode).padStart(2, '0')} — ${ep.title}`
-      : `${seriesTitle} S${String(ep.season).padStart(2, '0')}E${String(ep.episode).padStart(2, '0')}`,
-    streamUrl: client.buildEpisodeStreamUrl(ep.episodeId, ep.containerExtension),
-    groupTitle: seriesTitle,
-    category: seriesTitle,
-    sortIndex: index,
-    kind: 'series',
-    plot: ep.plot,
-    containerExtension: ep.containerExtension,
-    xtreamEpisodeId: ep.episodeId,
-    xtreamSeriesId: seriesId,
-  }));
+  const episodes = mapXtreamSeriesEpisodes(source, seriesId, seriesTitle, info, client);
   await upsertSeriesEpisodes(source.id, episodes);
 }
 

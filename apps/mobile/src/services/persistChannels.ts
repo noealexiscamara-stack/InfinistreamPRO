@@ -1,27 +1,9 @@
-import { channelId, classifyEntries, dedupeChannelsByUrl, groupChannelsByQuality } from '@infiny-stream/shared';
+import { channelId, classifyEntry, dedupeChannelsByUrl, groupChannelsByQuality } from '@infiny-stream/shared';
 import type { Channel, ContentKind } from '@infiny-stream/types';
 import { getDatabase } from '@/utils/db';
+import type { PersistableChannel } from '@/services/xtream/mapXtreamCatalog';
 
-export interface PersistableChannel {
-  name: string;
-  streamUrl: string;
-  logoUrl?: string;
-  groupTitle?: string;
-  tvgId?: string;
-  tvgName?: string;
-  country?: string;
-  category?: string;
-  sortIndex: number;
-  kind?: ContentKind;
-  plot?: string;
-  genre?: string;
-  rating?: number;
-  releaseDate?: string;
-  containerExtension?: string;
-  xtreamStreamId?: number;
-  xtreamSeriesId?: number;
-  xtreamEpisodeId?: string;
-}
+export type { PersistableChannel };
 
 export interface PersistChannelsResult {
   imported: number;
@@ -35,7 +17,7 @@ export function formatImportSummary(imported: number, ignored: number): string {
 }
 
 function withKind(channels: PersistableChannel[]): Array<PersistableChannel & { kind: ContentKind }> {
-  return channels.map((ch) => ({ ...ch, kind: ch.kind ?? classifyEntries([ch])[0].kind }));
+  return channels.map((ch) => ({ ...ch, kind: ch.kind ?? classifyEntry(ch) }));
 }
 
 export async function replaceSourceChannels(

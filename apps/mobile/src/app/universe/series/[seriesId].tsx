@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import { Image } from 'expo-image';
 import { groupEpisodesIntoSeries } from '@infiny-stream/shared';
 import type { Channel, GroupedSeries } from '@infiny-stream/types';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
@@ -13,13 +14,27 @@ import {
   getSeriesEpisodes,
 } from '@/services/channelsRepository';
 import { isXtreamSeriesPlaceholder } from '@/services/persistChannels';
+import { formatDisplayRating } from '@/services/xtream/mapXtreamCatalog';
 import { loadXtreamSeriesInfo } from '@/services/xtream/xtreamSeriesService';
 import { useSourcesStore } from '@/store/useSourcesStore';
 import type { XtreamSource } from '@infiny-stream/types';
 
-interface SeasonBlock {
+interface EpisodeListItem {
+  id: string;
+  label: string;
+  channelId: string;
+}
+
+interface XtreamEpisodeRow {
+  episodeId: string;
   season: number;
-  episodes: Channel[];
+  episode: number;
+  title: string;
+}
+
+function episodeLabel(ep: XtreamEpisodeRow): string {
+  const marker = `S${String(ep.season).padStart(2, '0')}E${String(ep.episode).padStart(2, '0')}`;
+  return ep.title ? `${marker} — ${ep.title}` : marker;
 }
 
 export default function SeriesDetailScreen() {
@@ -28,11 +43,22 @@ export default function SeriesDetailScreen() {
   const sources = useSourcesStore((s) => s.sources);
 
   const [title, setTitle] = useState('Série');
+  const [coverUrl, setCoverUrl] = useState<string | undefined>();
   const [plot, setPlot] = useState<string | undefined>();
   const [genre, setGenre] = useState<string | undefined>();
-  const [seasons, setSeasons] = useState<SeasonBlock[]>([]);
+  const [ratingLabel, setRatingLabel] = useState<string | null>(null);
+  const [seasons, setSeasons] = useState<{ season: number; episodes: Channel[] }[]>([]);
+  const [xtreamSeasons, setXtreamSeasons] = useState<number[]>([]);
+  const [xtreamEpisodes, setXtreamEpisodes] = useState<XtreamEpisodeRow[]>([]);
+  const [episodeChannelById, setEpisodeChannelById] = useState<Map<string, Channel>>(new Map());
+  const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
+
+  const visibleXtreamEpisodes = useMemo(() => {
+    if (selectedSeason == null) return [];
+    return xtreamEpisodes.filter((ep) => ep.season === selectedSeason);
+  }, [selectedSeason, xtreamEpisodes]);
 
   const reload = useCallback(async () => {
     if (!id) return;
@@ -48,25 +74,24 @@ export default function SeriesDetailScreen() {
         return;
       }
       setTitle(catalogRow.name);
+      setCoverUrl(catalogRow.logoUrl);
       setPlot(catalogRow.plot);
       setGenre(catalogRow.genre);
+      setRatingLabel(formatDisplayRating(catalogRow.rating));
       try {
         const info = await loadXtreamSeriesInfo(source, catalogRow.xtreamSeriesId, catalogRow.name);
+        if (info.cover) setCoverUrl(info.cover);
         if (info.plot) setPlot(info.plot);
         if (info.genre) setGenre(info.genre);
-        const bySeason = new Map<number, Channel[]>();
+
         const eps = await getSeriesEpisodes(source.id, catalogRow.xtreamSeriesId);
-        for (const ep of eps) {
-          const match = ep.name.match(/S(\d+)E(\d+)/i);
-          const season = match ? Number(match[1]) : 0;
-          if (!bySeason.has(season)) bySeason.set(season, []);
-          bySeason.get(season)!.push(ep);
-        }
-        setSeasons(
-          [...bySeason.entries()]
-            .sort(([a], [b]) => a - b)
-            .map(([season, episodes]) => ({ season, episodes }))
-        );
+        const byEpisodeId = new Map(eps.filter((ep) => ep.xtreamEpisodeId).map((ep) => [ep.xtreamEpisodeId!, ep]));
+
+        setXtreamSeasons(info.seasons);
+        setXtreamEpisodes(info.episodes);
+        setEpisodeChannelById(byEpisodeId);
+        setSelectedSeason(info.seasons[0] ?? null);
+        setSeasons([]);
       } catch {
         setMissing(true);
       }
@@ -86,9 +111,16 @@ export default function SeriesDetailScreen() {
       return;
     }
     setTitle(series.title);
+    setCoverUrl(series.logoUrl);
     setPlot(undefined);
     setGenre(undefined);
-    setSeasons(series.seasons.map((s) => ({ season: s.season, episodes: s.episodes })));
+    setRatingLabel(null);
+    setXtreamSeasons([]);
+    setXtreamEpisodes([]);
+    setEpisodeChannelById(new Map());
+    const m3uSeasons = series.seasons.map((s) => ({ season: s.season, episodes: s.episodes }));
+    setSeasons(m3uSeasons);
+    setSelectedSeason(m3uSeasons[0]?.season ?? null);
     setLoading(false);
   }, [id, sources]);
 
@@ -96,7 +128,23 @@ export default function SeriesDetailScreen() {
     reload();
   }, [reload]);
 
-  const headerMeta = useMemo(() => [genre, plot].filter(Boolean).join('\n'), [genre, plot]);
+  const m3uVisibleEpisodes = useMemo(() => {
+    if (selectedSeason == null) return [];
+    return seasons.find((s) => s.season === selectedSeason)?.episodes ?? [];
+  }, [seasons, selectedSeason]);
+
+  const episodeRows = useMemo((): EpisodeListItem[] => {
+    if (xtreamSeasons.length > 0) {
+      return visibleXtreamEpisodes.flatMap((ep) => {
+        const channel = episodeChannelById.get(ep.episodeId);
+        if (!channel) return [];
+        return [{ id: ep.episodeId, label: episodeLabel(ep), channelId: channel.id }];
+      });
+    }
+    return m3uVisibleEpisodes.map((ch) => ({ id: ch.id, label: ch.name, channelId: ch.id }));
+  }, [xtreamSeasons.length, visibleXtreamEpisodes, m3uVisibleEpisodes, episodeChannelById]);
+
+  const seasonOptions = xtreamSeasons.length > 0 ? xtreamSeasons : seasons.map((s) => s.season);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -110,29 +158,49 @@ export default function SeriesDetailScreen() {
         <EmptyState icon="albums-outline" title="Série introuvable" message="Cette série n'est plus disponible." />
       ) : (
         <FlatList
-          data={seasons}
-          keyExtractor={(item) => String(item.season)}
+          data={episodeRows}
+          keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           ListHeaderComponent={
-            headerMeta ? (
+            <View style={styles.header}>
+              {coverUrl ? (
+                <Image source={{ uri: coverUrl }} style={styles.cover} contentFit="cover" cachePolicy="disk" />
+              ) : null}
               <View style={styles.headerCopy}>
+                {ratingLabel ? <Text style={styles.rating}>{ratingLabel}</Text> : null}
                 {!!genre && <Text style={styles.genre}>{genre}</Text>}
                 {!!plot && <Text style={styles.plot}>{plot}</Text>}
               </View>
-            ) : null
-          }
-          renderItem={({ item: season }) => (
-            <View style={styles.seasonBlock}>
-              <Text style={styles.seasonTitle}>Saison {season.season}</Text>
-              {season.episodes.map((ep) => (
-                <Pressable key={ep.id} style={styles.episodeRow} onPress={() => router.push(`/player/${ep.id}`)}>
-                  <Text style={styles.episodeName} numberOfLines={1}>
-                    {ep.name}
-                  </Text>
-                  <Text style={styles.playLabel}>Lire</Text>
-                </Pressable>
-              ))}
+              {seasonOptions.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.seasonPicker}>
+                  {seasonOptions.map((season) => {
+                    const selected = season === selectedSeason;
+                    return (
+                      <Pressable
+                        key={season}
+                        style={[styles.seasonChip, selected && styles.seasonChipSelected]}
+                        onPress={() => setSelectedSeason(season)}
+                      >
+                        <Text style={[styles.seasonChipLabel, selected && styles.seasonChipLabelSelected]}>
+                          Saison {season}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              ) : null}
+              {selectedSeason != null ? (
+                <Text style={styles.episodeHeading}>Épisodes — Saison {selectedSeason}</Text>
+              ) : null}
             </View>
+          }
+          renderItem={({ item }) => (
+            <Pressable style={styles.episodeRow} onPress={() => router.push(`/player/${item.channelId}`)}>
+              <Text style={styles.episodeName} numberOfLines={2}>
+                {item.label}
+              </Text>
+              <Text style={styles.playLabel}>Lire</Text>
+            </Pressable>
           )}
         />
       )}
@@ -143,12 +211,29 @@ export default function SeriesDetailScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  list: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxxl, gap: spacing.lg },
-  headerCopy: { gap: spacing.xs, marginBottom: spacing.md },
+  list: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxxl, gap: spacing.xs },
+  header: { gap: spacing.md, marginBottom: spacing.md },
+  cover: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+  },
+  headerCopy: { gap: spacing.xs },
+  rating: { ...typography.caption, color: colors.cyan, fontWeight: '700' },
   genre: { ...typography.caption, color: colors.cyan, textTransform: 'uppercase' },
   plot: { ...typography.body, color: colors.textSecondary },
-  seasonBlock: { gap: spacing.xs },
-  seasonTitle: { ...typography.headline, color: colors.textPrimary, marginBottom: spacing.xs },
+  seasonPicker: { gap: spacing.sm, paddingVertical: spacing.xs },
+  seasonChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+  },
+  seasonChipSelected: { backgroundColor: colors.cyan },
+  seasonChipLabel: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
+  seasonChipLabelSelected: { color: colors.background },
+  episodeHeading: { ...typography.headline, color: colors.textPrimary },
   episodeRow: {
     flexDirection: 'row',
     alignItems: 'center',
