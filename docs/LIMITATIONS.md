@@ -22,30 +22,36 @@ Ce qui suit distingue donc "écrit et raisonné avec soin" de "vérifié en exé
 `VideoPlayer` `expo-video` (Media3 sur Android). Le code compile et son raisonnement est documenté en commentaires,
 mais **rien ici n'a pu être exécuté sur un appareil ou un émulateur** :
 
-- Lecture effective d'un flux HLS/TS réel.
-- Détection de stall/erreur via les événements `statusChange` d'expo-video — le nom exact des événements et leur
-  comportement doivent être revérifiés contre la version installée (`expo-video ~57.0.2`) sur un appareil réel.
-- Changement de rendition en direct (`player.replace()`) sans interruption visible excessive.
-- Reconnexion automatique après coupure réseau réelle (Wi-Fi→4G, perte totale, latence élevée).
-- Chromecast (mentionné en fonctionnalité Premium optionnelle, non implémenté du tout).
+- Lecture effective d'un flux HLS/TS réel (master passé tel quel à ExoPlayer — ABR natif).
+- Détection d'erreur via `statusChange` d'expo-video — à revérifier sur appareil réel (`expo-video ~57.0.2`).
+- Stabilité > 10 minutes sur bonne connexion (critère d'acceptation produit).
+- Reconnexion automatique après erreur réelle du lecteur (pas après estimation de débit).
+- Chromecast (Premium optionnel, non implémenté).
 
 **Prochaine étape recommandée** : `expo prebuild` + build de développement (`eas build --profile development` ou
 Android Studio local) puis test manuel sur un appareil bas de gamme réel avec un flux IPTV légitime, en suivant la
 matrice de tests réseau du cahier des charges (Wi-Fi excellent/moyen/faible, 3G/4G divers, perte/latence).
 
-## 2. Mesure fine du débit réseau — approximation documentée
+## 2. ABR natif ExoPlayer — plafond qualité non exposé par expo-video
 
-`AdaptiveStreamingManager` et son estimateur (`ThroughputEstimator`) sont testés unitairement (43 tests) avec des
-échantillons simulés, et l'algorithme de décision (hystérésis, paliers, modes) est solide. Ce qui manque : une
-source de mesure **par segment vidéo réel**. `expo-video` n'expose pas aujourd'hui le `BandwidthMeter` interne de
-Media3 côté JS. La mesure actuelle s'appuie sur :
+`PlayerController` passe le **manifeste HLS maître** à `expo-video` / Media3. L'adaptation de débit est faite
+par ExoPlayer sur les segments réels (comme IBO / IPTV Smarters). On ne sélectionne plus de variante en JS et
+on ne mesure plus le débit via le téléchargement d'un manifeste (~2 Ko).
 
-- le chronométrage du téléchargement du manifeste (une mesure par chargement de chaîne) ;
-- la détection de rebuffering comme signal fort de dégradation.
+Ce que `expo-video` (~57.x) expose réellement côté JS :
 
-**Prochaine étape recommandée** : un petit module natif Expo (Kotlin) qui expose les événements de
-`AnalyticsListener`/`BandwidthMeter` de Media3 au JS, pour un signal continu au lieu d'un point de mesure par
-chargement.
+- `bufferOptions` (durée de tampon avant, seuil de démarrage, plafond d'octets) — **seul levier** des modes
+  Économie / Équilibré / Qualité (libellés UI alignés là-dessus) ;
+- `availableVideoTracks` / `videoTrack` / événement `videoTrackChange` — **lecture seule** ; la barre d'état
+  et le lecteur affichent la hauteur réelle de la piste (`1080p FHD`, etc.) ou `—` hors lecture ;
+- **aucun** `maxBitrate` / `maxHeight` / `preferredPeakBitRate`.
+
+Sans module natif (TrackSelectionParameters Media3), le mode utilisateur **ne peut pas** imposer un plafond de
+résolution. Ne pas réintroduire de libellés ou de logique qui suggèrent le contraire. « Hors ligne » vient
+uniquement de la connectivité système (`expo-network`), jamais d'une estimation de débit.
+
+**Prochaine étape recommandée** : module Expo Kotlin exposant un plafond bitrate/hauteur Media3 si le produit
+exige un vrai plafond Économie (480p) côté lecteur.
 
 ## 3. Android TV — manifeste patché, focus non testé
 

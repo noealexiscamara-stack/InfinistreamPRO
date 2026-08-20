@@ -42,8 +42,8 @@ describe('ThroughputEstimator', () => {
 });
 
 describe('classifyNetworkQuality', () => {
-  it('maps throughput to the 4 user-facing levels', () => {
-    expect(classifyNetworkQuality(0, true)).toBe('offline');
+  it('never treats zero throughput as offline — that is a connectivity fact', () => {
+    expect(classifyNetworkQuality(0, true)).toBe('unknown');
     expect(classifyNetworkQuality(300, true)).toBe('low');
     expect(classifyNetworkQuality(1000, true)).toBe('medium');
     expect(classifyNetworkQuality(2500, true)).toBe('good');

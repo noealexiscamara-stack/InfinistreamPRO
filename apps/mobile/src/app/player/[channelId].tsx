@@ -5,16 +5,18 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useVideoPlayer, VideoView, type VideoPlayerStatus } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import type { Channel, GroupedChannel } from '@infiny-stream/types';
-import { NETWORK_QUALITY_LABELS } from '@infiny-stream/types';
 import { colors, networkQualityColor, radius, spacing, typography } from '@/theme/tokens';
 import { getChannelById, getChannels } from '@/services/channelsRepository';
 import { findGroupContaining, groupedFromChannels } from '@/services/channelGroups';
 import { recordHistory } from '@/services/favoritesHistoryRepository';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
+import { useNetworkState } from '@/store/useNetworkStore';
 import { PlayerController } from '@/services/playback/PlayerController';
 import { isXtreamSeriesPlaceholder } from '@/services/persistChannels';
 import { useRadioPlayback } from '@/services/playback/RadioPlaybackProvider';
+import { connectionLevelLabel } from '@/utils/networkDisplay';
+import { formatPlaybackHeight, usePlaybackQualityStore } from '@/store/usePlaybackQualityStore';
 
 type PlayerScreenState = 'loading' | 'playing' | 'reconnecting' | 'error';
 
@@ -26,13 +28,13 @@ export default function PlayerScreen() {
   const [group, setGroup] = useState<GroupedChannel | null>(null);
   const [siblings, setSiblings] = useState<GroupedChannel[]>([]);
   const [screenState, setScreenState] = useState<PlayerScreenState>('loading');
-  const [networkLabel, setNetworkLabel] = useState<{ quality: keyof typeof networkQualityColor; text: string }>({
-    quality: 'medium',
-    text: 'Mesure en cours…',
-  });
   const [controlsVisible, setControlsVisible] = useState(true);
 
   const qualityMode = useSettingsStore((s) => s.qualityMode);
+  const networkState = useNetworkState();
+  const playbackHeight = usePlaybackQualityStore((s) => s.height);
+  const setPlaybackHeight = usePlaybackQualityStore((s) => s.setHeight);
+  const clearPlaybackQuality = usePlaybackQualityStore((s) => s.clear);
   const toggleFavorite = useFavoritesStore((s) => s.toggle);
   const isFavorite = useFavoritesStore((s) => s.isFavorite);
   const { playRadio, stopRadio, activeChannel: activeRadio } = useRadioPlayback();
@@ -48,10 +50,11 @@ export default function PlayerScreen() {
 
   useEffect(() => {
     return () => {
+      clearPlaybackQuality();
       controllerRef.current?.dispose();
       controllerRef.current = null;
     };
-  }, []);
+  }, [clearPlaybackQuality]);
 
   useEffect(() => {
     if (!channelId) return;
@@ -112,9 +115,6 @@ export default function PlayerScreen() {
       stopRadio();
 
       controller.setCallbacks({
-        onNetworkStateChange: (state) => {
-          setNetworkLabel({ quality: state.quality, text: NETWORK_QUALITY_LABELS[state.quality] });
-        },
         onReconnecting: () => setScreenState('reconnecting'),
         onReconnected: () => setScreenState('playing'),
         onFatalError: () => setScreenState('error'),
@@ -148,13 +148,23 @@ export default function PlayerScreen() {
   }, [qualityMode]);
 
   useEffect(() => {
-    const sub = player.addListener('statusChange', (event: { status: VideoPlayerStatus }) => {
+    const statusSub = player.addListener('statusChange', (event: { status: VideoPlayerStatus }) => {
       if (event.status === 'error') {
         controllerRef.current?.handlePlaybackError('source');
       }
     });
-    return () => sub.remove();
-  }, [player]);
+    const trackSub = player.addListener(
+      'videoTrackChange',
+      (event: { videoTrack: { size?: { height?: number } } | null }) => {
+        const height = event.videoTrack?.size?.height;
+        setPlaybackHeight(typeof height === 'number' && height > 0 ? height : null);
+      }
+    );
+    return () => {
+      statusSub.remove();
+      trackSub.remove();
+    };
+  }, [player, setPlaybackHeight]);
 
   const currentIndex = useMemo(() => siblings.findIndex((g) => g.id === group?.id), [siblings, group]);
 
@@ -234,8 +244,12 @@ export default function PlayerScreen() {
                 </Text>
                 {!isRadio && (
                   <View style={styles.networkRow}>
-                    <View style={[styles.dot, { backgroundColor: networkQualityColor[networkLabel.quality] }]} />
-                    <Text style={styles.networkText}>{networkLabel.text}</Text>
+                    <View
+                      style={[styles.dot, { backgroundColor: networkQualityColor[networkState.quality] }]}
+                    />
+                    <Text style={styles.networkText}>
+                      {connectionLevelLabel(networkState)} · {formatPlaybackHeight(playbackHeight)}
+                    </Text>
                   </View>
                 )}
               </View>

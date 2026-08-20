@@ -17,6 +17,8 @@ const PATH_KIND: Array<{ segment: string; kind: ContentKind }> = [
 
 const AUDIO_EXTENSIONS = ['.mp3', '.aac', '.m4a', '.ogg', '.opus', '.wav', '.flac'];
 const VOD_EXTENSIONS = ['.mkv', '.mp4', '.avi', '.mov', '.m4v', '.webm'];
+/** Live streaming containers — thematic M3U groups ("FILMS", "SÉRIES") are channel folders, not VOD. */
+const LIVE_STREAM_EXTENSIONS = ['.m3u8', '.m3u', '.ts'];
 
 const GROUP_PATTERNS: Array<{ kind: ContentKind; words: string[] }> = [
   { kind: 'radio', words: ['radio', 'radios', 'fm', 'webradio', 'web radio'] },
@@ -98,6 +100,20 @@ function extensionOf(streamUrl: string): string {
   return dot >= 0 ? last.slice(dot) : '';
 }
 
+/**
+ * True when the URL is a live/linear stream container or an extension-less
+ * IPTV endpoint (http://host:port/id). Group titles like "CINEMA & FILMS" /
+ * "SÉRIES" then mean thematic live folders, not on-demand catalogs —
+ * verified against playlist_finale.m3u (owner-confirmed live-only).
+ */
+export function looksLikeLiveStream(streamUrl: string): boolean {
+  const ext = extensionOf(streamUrl);
+  if (LIVE_STREAM_EXTENSIONS.includes(ext)) return true;
+  // No file extension → almost always a live IPTV path, never a VOD container.
+  if (!ext) return true;
+  return false;
+}
+
 export function classifyEntry(entry: ClassifiableEntry): ContentKind {
   const segments = pathSegments(entry.streamUrl);
 
@@ -114,17 +130,21 @@ export function classifyEntry(entry: ClassifiableEntry): ContentKind {
     return parseEpisodeMarker(entry.name) ? 'series' : 'movie';
   }
 
+  const liveStream = looksLikeLiveStream(entry.streamUrl);
   const group = fold(entry.groupTitle ?? '');
   if (group) {
     for (const { kind, words } of GROUP_PATTERNS) {
       if (words.some((w) => new RegExp(`(^|[^a-z0-9])${w}([^a-z0-9]|$)`).test(group))) {
+        // Thematic live folders ("📺 SÉRIES", "🎬 CINEMA & FILMS") must stay live.
+        if (liveStream && (kind === 'movie' || kind === 'series')) continue;
         if (kind === 'movie' && parseEpisodeMarker(entry.name)) return 'series';
         return kind;
       }
     }
   }
 
-  if (parseEpisodeMarker(entry.name)) return 'series';
+  // Episode markers on live HLS/TS names are not VOD episodes (e.g. channel branding).
+  if (!liveStream && parseEpisodeMarker(entry.name)) return 'series';
 
   return 'live';
 }

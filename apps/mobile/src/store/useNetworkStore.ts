@@ -10,7 +10,7 @@ interface NetworkStoreState {
 
 const useNetworkStoreInternal = create<NetworkStoreState>((set) => ({
   state: {
-    quality: 'medium',
+    quality: 'unknown',
     connectionType: 'unknown',
     estimatedThroughputKbps: 0,
     isStable: false,

@@ -40,12 +40,29 @@ describe('classifyEntry — group title', () => {
   it.each([
     ['FR | RADIOS', 'radio'],
     ['Radio', 'radio'],
-    ['VOD - FILMS', 'movie'],
-    ['SÉRIES FR', 'series'],
-    ['Novelas', 'series'],
-    ['Peliculas', 'movie'],
   ])('reads %s as %s', (group, expected) => {
     expect(classifyEntry(e('Quelque chose', 'http://x/unknown', group))).toBe(expected);
+  });
+
+  it('does not trust film/series groups alone without a VOD file or path', () => {
+    expect(classifyEntry(e('Quelque chose', 'http://x/unknown', 'VOD - FILMS'))).toBe('live');
+    expect(classifyEntry(e('Quelque chose', 'http://x/unknown', 'SÉRIES FR'))).toBe('live');
+    expect(classifyEntry(e('Quelque chose', 'http://x/unknown', 'Novelas'))).toBe('live');
+    expect(classifyEntry(e('Quelque chose', 'http://x/unknown', 'Peliculas'))).toBe('live');
+  });
+
+  it('still classifies VOD containers via extension, regardless of group', () => {
+    expect(classifyEntry(e('Inception', 'http://x/files/inception.mkv', 'FILMS'))).toBe('movie');
+    expect(classifyEntry(e('Show S01E02', 'http://x/files/ep.mkv', 'SERIES'))).toBe('series');
+  });
+
+  it('ignores thematic film/series groups on HLS and extension-less live URLs', () => {
+    expect(classifyEntry(e('Canal+ Cinéma', 'http://x/canal.m3u8', '🎬 CINEMA & FILMS'))).toBe('live');
+    expect(classifyEntry(e('Serie Max', 'http://x/series.m3u8', '📺 SÉRIES'))).toBe('live');
+    expect(classifyEntry(e('AMC', 'http://x/amc.ts', 'Films'))).toBe('live');
+    expect(classifyEntry(e('Nickelodeon (576p)', 'http://195.64.140.147:10121/121', '🎬 CINEMA & FILMS'))).toBe(
+      'live'
+    );
   });
 
   it('does not turn a TV channel into a radio because of the word radio', () => {

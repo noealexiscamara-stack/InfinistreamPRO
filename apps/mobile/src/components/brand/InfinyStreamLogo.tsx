@@ -29,9 +29,10 @@ export function InfinyStreamLogo({ style, compact = false }: InfinyStreamLogoPro
         />
       </Svg>
       {!compact && (
-        <Text style={styles.wordmark}>
-          INFINY <Text style={styles.wordmarkAccent}>STREAM</Text>
-        </Text>
+        <View>
+          <Text style={styles.wordmark}>INFINY</Text>
+          <Text style={styles.wordmarkAccent}>STREAM</Text>
+        </View>
       )}
     </View>
   );
@@ -45,12 +46,17 @@ const styles = StyleSheet.create({
   },
   wordmark: {
     ...typography.headline,
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
-    letterSpacing: 1.2,
+    letterSpacing: 1.4,
     color: colors.textPrimary,
+    lineHeight: 18,
   },
   wordmarkAccent: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.6,
     color: colors.cyan,
+    lineHeight: 14,
   },
 });

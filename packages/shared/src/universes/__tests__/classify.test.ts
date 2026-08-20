@@ -1,5 +1,5 @@
 import { classifyEntry } from '../classify';
-import type { ClassifiableEntry } from '@infiny-stream/types';
+import type { ClassifiableEntry } from '../../content/classify';
 
 describe('classifyEntry', () => {
   const live = (overrides: Partial<ClassifiableEntry> = {}): ClassifiableEntry => ({
@@ -9,11 +9,18 @@ describe('classifyEntry', () => {
     ...overrides,
   });
 
+  const vod = (overrides: Partial<ClassifiableEntry> = {}): ClassifiableEntry => ({
+    name: 'Inception',
+    streamUrl: 'http://x/files/title.mkv',
+    groupTitle: 'Films',
+    ...overrides,
+  });
+
   it('defaults to live for a plain channel', () => {
     expect(classifyEntry(live())).toBe('live');
   });
 
-  it('detects radio from group title', () => {
+  it('detects radio from group title even on HLS', () => {
     expect(classifyEntry(live({ groupTitle: 'Radio France', name: 'FIP' }))).toBe('radio');
   });
 
@@ -21,32 +28,34 @@ describe('classifyEntry', () => {
     expect(classifyEntry(live({ name: 'BBC Radio 1', groupTitle: 'UK Radio' }))).toBe('radio');
   });
 
-  it('detects series from SxxExx in the title', () => {
-    expect(classifyEntry(live({ name: 'Breaking Bad S01E03', groupTitle: 'Series' }))).toBe('series');
+  it('does not treat SxxExx on an HLS URL as a VOD series', () => {
+    expect(classifyEntry(live({ name: 'Breaking Bad S01E03', groupTitle: 'Series' }))).toBe('live');
   });
 
-  it('detects series from 1x03 pattern', () => {
-    expect(classifyEntry(live({ name: 'Doctor Who 1x03', groupTitle: 'Sci-Fi' }))).toBe('series');
+  it('does not treat 1x03 on an HLS URL as a VOD series', () => {
+    expect(classifyEntry(live({ name: 'Doctor Who 1x03', groupTitle: 'Sci-Fi' }))).toBe('live');
   });
 
-  it('detects series from group when no episode marker', () => {
-    expect(classifyEntry(live({ name: 'Some Show', groupTitle: 'Series TV' }))).toBe('series');
+  it('keeps thematic series groups as live when the URL is HLS', () => {
+    expect(classifyEntry(live({ name: 'Some Show', groupTitle: 'Series TV' }))).toBe('live');
   });
 
-  it('detects movies from VOD group', () => {
-    expect(classifyEntry(live({ name: 'Inception', groupTitle: 'Movies' }))).toBe('movie');
+  it('detects movies from VOD file + movie group', () => {
+    expect(classifyEntry(vod({ name: 'Inception', groupTitle: 'Movies' }))).toBe('movie');
   });
 
-  it('detects movies from French film group', () => {
-    expect(classifyEntry(live({ name: 'Le Fabuleux Destin', groupTitle: 'Films' }))).toBe('movie');
+  it('detects movies from French film group only with a VOD file URL', () => {
+    expect(classifyEntry(vod({ name: 'Le Fabuleux Destin', streamUrl: 'http://x/film.mkv', groupTitle: 'Films' }))).toBe(
+      'movie'
+    );
   });
 
   it('prefers radio over movie when both keywords appear', () => {
     expect(classifyEntry(live({ name: 'Jazz Radio', groupTitle: 'Movies & Radio' }))).toBe('radio');
   });
 
-  it('prefers episode marker over movie group', () => {
-    expect(classifyEntry(live({ name: 'Batman S01E01', groupTitle: 'Movies' }))).toBe('series');
+  it('prefers episode marker over movie group for VOD files', () => {
+    expect(classifyEntry(vod({ name: 'Batman S01E01', groupTitle: 'Movies' }))).toBe('series');
   });
 
   it('keeps news channels as live', () => {
@@ -57,16 +66,16 @@ describe('classifyEntry', () => {
     expect(classifyEntry(live({ groupTitle: 'Webradio', name: 'FIP' }))).toBe('radio');
   });
 
-  it('detects cinema groups as movies', () => {
-    expect(classifyEntry(live({ groupTitle: 'Cinéma', name: 'Amélie' }))).toBe('movie');
+  it('keeps cinema-themed live folders as live on HLS', () => {
+    expect(classifyEntry(live({ groupTitle: 'Cinéma', name: 'Amélie' }))).toBe('live');
   });
 
-  it('detects VOD groups as movies', () => {
-    expect(classifyEntry(live({ groupTitle: 'VOD France', name: 'Taxi' }))).toBe('movie');
+  it('detects VOD groups as movies only with a VOD container URL', () => {
+    expect(classifyEntry(vod({ groupTitle: 'VOD France', name: 'Taxi', streamUrl: 'http://x/taxi.mp4' }))).toBe('movie');
   });
 
-  it('detects saison keyword as series', () => {
-    expect(classifyEntry(live({ groupTitle: 'Saisons complètes', name: 'Lost' }))).toBe('series');
+  it('keeps saison-themed live folders as live on HLS', () => {
+    expect(classifyEntry(live({ groupTitle: 'Saisons complètes', name: 'Lost' }))).toBe('live');
   });
 
   it('keeps sports live channels live', () => {

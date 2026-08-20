@@ -2,16 +2,11 @@ import type { NetworkQualityLevel } from '@infiny-stream/types';
 
 /**
  * kbps thresholds used to translate a raw throughput estimate into the
- * simple 4-level indicator shown to the user (Excellente/Bonne/Moyenne/
- * Faible). Roughly aligned with typical live-stream renditions so the
- * label tracks what quality the user can expect:
- *   < 500      -> low      (240p territory)
- *   500-1500   -> medium   (360p/480p)
- *   1500-4000  -> good     (480p/720p)
- *   > 4000     -> excellent(720p/1080p)
- * These are intentionally centralized here rather than duplicated across
- * screens, so the indicator and the actual variant selection never
- * disagree with each other.
+ * simple indicator shown to the user (Excellente/Bonne/Moyenne/Faible).
+ *
+ * IMPORTANT: this function never returns 'offline'. Offline is a system
+ * connectivity fact (no link / not reachable), not a throughput conclusion.
+ * Zero or missing throughput → 'unknown' (UI shows a dash).
  */
 export const NETWORK_QUALITY_THRESHOLDS_KBPS = {
   low: 500,
@@ -20,7 +15,7 @@ export const NETWORK_QUALITY_THRESHOLDS_KBPS = {
 } as const;
 
 export function classifyNetworkQuality(estimatedKbps: number, isStable: boolean): NetworkQualityLevel {
-  if (estimatedKbps <= 0) return 'offline';
+  if (estimatedKbps <= 0) return 'unknown';
 
   let level: NetworkQualityLevel;
   if (estimatedKbps < NETWORK_QUALITY_THRESHOLDS_KBPS.low) {

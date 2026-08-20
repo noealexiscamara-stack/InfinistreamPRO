@@ -54,17 +54,13 @@ export const DEFAULT_TIER_SWITCH_CONFIG: ChannelTierSwitcherConfig = {
 };
 
 /**
- * Coarse-grained adaptation *between playlist entries* of the same channel.
+ * Coarse-grained failover *between playlist entries* of the same channel
+ * (SD/HD/FHD as separate M3U URLs). Not HLS ABR — that stays inside ExoPlayer
+ * when the given URL is a master playlist.
  *
- * This is the outer of two loops. The inner loop is
- * `AdaptiveStreamingManager`, which switches between renditions inside one
- * HLS stream — cheap, seamless, runs every few seconds. This outer loop
- * switches to a different URL entirely, which means tearing down the
- * connection and rebuffering: the user sees a black frame for a second or
- * two. It therefore runs on a much longer leash.
- *
- * Use it when `group.hasLadder` is true. When a channel has a single tier
- * there is nothing to decide and every call is a pass-through.
+ * Use when `group.hasLadder` is true. Single-tier groups are a pass-through.
+ * Automatic throughput/stall tier climbing is unused by PlayerController:
+ * only `reportTierDead` (real player errors) and the mode height ceiling apply.
  */
 export class ChannelTierSwitcher {
   private readonly config: ChannelTierSwitcherConfig;

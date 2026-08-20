@@ -2,72 +2,83 @@ jest.mock('@/services/network/NetworkMonitor', () => ({
   NetworkMonitor: {
     reportSample: jest.fn(),
     reportStall: jest.fn(),
+    reportTimedDownload: jest.fn(() => false),
+    subscribe: jest.fn(() => () => undefined),
   },
 }));
 
 import type { VideoPlayer } from 'expo-video';
-import { QUALITY_REEVALUATION_INTERVAL_MS } from '@infiny-stream/config';
+import { NetworkMonitor } from '@/services/network/NetworkMonitor';
 import { PlayerController } from '../PlayerController';
 
-const HLS_MASTER = `#EXTM3U
-#EXT-X-STREAM-INF:BANDWIDTH=400000,RESOLUTION=426x240
-240.m3u8
-#EXT-X-STREAM-INF:BANDWIDTH=1400000,RESOLUTION=854x480
-480.m3u8
-#EXT-X-STREAM-INF:BANDWIDTH=2800000,RESOLUTION=1280x720
-720.m3u8
-#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080
-1080.m3u8
-`;
+const HLS_MASTER_URL = 'https://example.com/live/master.m3u8';
+const DIRECT_TS_URL = 'https://example.com/live/channel.ts';
 
 function createMockPlayer(): VideoPlayer {
   return {
     replace: jest.fn(),
     play: jest.fn(),
     pause: jest.fn(),
+    bufferOptions: {},
   } as unknown as VideoPlayer;
 }
 
-describe('PlayerController', () => {
-  beforeEach(() => {
-    jest.useFakeTimers();
-  });
-
+describe('PlayerController (native ABR)', () => {
   afterEach(() => {
-    jest.clearAllTimers();
-    jest.useRealTimers();
     jest.restoreAllMocks();
+    jest.clearAllMocks();
   });
 
-  it('does not throw when reevaluation runs without loadChannel', () => {
-    const controller = new PlayerController(createMockPlayer());
+  it('passes the HLS master URL to the player, not a picked variant', async () => {
+    const mockPlayer = createMockPlayer();
+    const controller = new PlayerController(mockPlayer);
 
-    expect(() => controller.setMode('balanced')).not.toThrow();
+    await controller.loadChannel(HLS_MASTER_URL);
 
-    (controller as unknown as { startReevaluationLoop(): void }).startReevaluationLoop();
-    expect(() => jest.advanceTimersByTime(QUALITY_REEVALUATION_INTERVAL_MS * 3)).not.toThrow();
+    expect(mockPlayer.replace).toHaveBeenCalledTimes(1);
+    const source = (mockPlayer.replace as jest.Mock).mock.calls[0][0];
+    expect(source.uri).toBe(HLS_MASTER_URL);
+    expect(source.contentType).toBe('hls');
+    expect(NetworkMonitor.reportTimedDownload).not.toHaveBeenCalled();
+    expect(NetworkMonitor.reportSample).not.toHaveBeenCalled();
 
     controller.dispose();
   });
 
-  it('applies economy mode set before loadChannel when playback starts', async () => {
-    jest.spyOn(globalThis, 'fetch').mockResolvedValue({
-      text: () => Promise.resolve(HLS_MASTER),
-    } as Response);
-
+  it('passes a single-rendition URL through unchanged', async () => {
     const mockPlayer = createMockPlayer();
     const controller = new PlayerController(mockPlayer);
 
-    controller.setMode('economy');
-    expect(controller.getMode()).toBe('economy');
+    await controller.loadChannel(DIRECT_TS_URL);
 
-    await controller.loadChannel('https://example.com/live/master.m3u8');
-
-    expect(mockPlayer.replace).toHaveBeenCalled();
     const source = (mockPlayer.replace as jest.Mock).mock.calls[0][0];
-    expect(source.uri).toContain('480.m3u8');
-    expect(source.uri).not.toMatch(/720|1080/);
+    expect(source.uri).toBe(DIRECT_TS_URL);
+    expect(source.contentType).toBeUndefined();
 
+    controller.dispose();
+  });
+
+  it('applies buffer options for the quality mode without retargeting the URL', async () => {
+    const mockPlayer = createMockPlayer();
+    const controller = new PlayerController(mockPlayer);
+
+    await controller.loadChannel(HLS_MASTER_URL);
+    const uriAfterLoad = (mockPlayer.replace as jest.Mock).mock.calls[0][0].uri;
+
+    controller.setMode('economy');
+    expect(mockPlayer.bufferOptions).toMatchObject({
+      preferredForwardBufferDuration: 12,
+      prioritizeTimeOverSizeThreshold: true,
+    });
+    expect((mockPlayer.replace as jest.Mock).mock.calls.length).toBe(1);
+    expect(uriAfterLoad).toBe(HLS_MASTER_URL);
+
+    controller.dispose();
+  });
+
+  it('does not throw when setMode is called before loadChannel', () => {
+    const controller = new PlayerController(createMockPlayer());
+    expect(() => controller.setMode('balanced')).not.toThrow();
     controller.dispose();
   });
 });

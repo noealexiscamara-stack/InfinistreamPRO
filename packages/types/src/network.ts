@@ -1,5 +1,5 @@
 /** Coarse network quality shown to the user — never raw metrics. */
-export type NetworkQualityLevel = 'excellent' | 'good' | 'medium' | 'low' | 'offline';
+export type NetworkQualityLevel = 'excellent' | 'good' | 'medium' | 'low' | 'unknown' | 'offline';
 
 export type QualityMode = 'auto' | 'economy' | 'balanced' | 'quality';
 
@@ -47,5 +47,6 @@ export const NETWORK_QUALITY_LABELS: Record<NetworkQualityLevel, string> = {
   good: 'Bonne',
   medium: 'Moyenne',
   low: 'Faible',
+  unknown: '—',
   offline: 'Hors ligne',
 };

@@ -6,10 +6,10 @@ import { colors, radius, spacing, typography } from '@/theme/tokens';
 const MODES: QualityMode[] = ['auto', 'economy', 'balanced', 'quality'];
 
 const DESCRIPTIONS: Record<QualityMode, string> = {
-  auto: "Recommandé — l'application choisit la meilleure qualité soutenable.",
-  economy: 'Priorité à la consommation de données.',
-  balanced: 'Compromis entre qualité, stabilité et data.',
-  quality: 'Priorité à la meilleure qualité disponible.',
+  auto: 'Le lecteur adapte la qualité à la connexion (ABR ExoPlayer). Tampon standard.',
+  economy: 'Tampon plus court — démarrage plus rapide, moins de mémoire réservée.',
+  balanced: 'Tampon intermédiaire — compromis entre démarrage et marge anti-coupure.',
+  quality: 'Tampon plus large — plus de stabilité sur réseau instable, démarrage un peu plus long.',
 };
 
 export function QualityModeSelector({ value, onChange }: { value: QualityMode; onChange: (mode: QualityMode) => void }) {

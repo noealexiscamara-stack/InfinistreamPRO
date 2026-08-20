@@ -2,17 +2,19 @@ import { StyleSheet, Text, View } from 'react-native';
 import { colors, networkQualityColor, radius, spacing, typography } from '@/theme/tokens';
 import { useNetworkState } from '@/store/useNetworkStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
-import { connectionLevelLabel, currentQualityLabel, hasNetworkMeasurement, qualityModeLabel } from '@/utils/networkDisplay';
+import { connectionLevelLabel, qualityModeLabel } from '@/utils/networkDisplay';
+import { formatPlaybackHeight, usePlaybackQualityStore } from '@/store/usePlaybackQualityStore';
 
 /**
  * Compact connection readout for screens that are not the home hero.
- * Values come from NetworkMonitor; unmeasured quality stays neutral.
+ * Qualité = piste vidéo active (expo-video), sinon "—".
  */
 export function NetworkStatusHeader() {
   const network = useNetworkState();
   const qualityMode = useSettingsStore((s) => s.qualityMode);
-  const measured = hasNetworkMeasurement(network);
-  const dotColor = network.quality === 'offline' ? networkQualityColor.offline : measured ? networkQualityColor[network.quality] : colors.textTertiary;
+  const playbackHeight = usePlaybackQualityStore((s) => s.height);
+  const dotColor =
+    network.quality === 'offline' ? networkQualityColor.offline : networkQualityColor[network.quality];
 
   return (
     <View style={styles.row}>
@@ -24,7 +26,7 @@ export function NetworkStatusHeader() {
       </View>
       <View style={styles.separator} />
       <Text style={styles.label}>
-        Qualité : <Text style={styles.value}>{currentQualityLabel(network)}</Text>
+        Qualité : <Text style={styles.value}>{formatPlaybackHeight(playbackHeight)}</Text>
       </Text>
       <View style={styles.separator} />
       <Text style={styles.label}>

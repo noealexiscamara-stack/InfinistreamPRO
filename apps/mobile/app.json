@@ -3,7 +3,7 @@
     "name": "Infiny Stream",
     "slug": "infiny-stream",
     "version": "0.1.1",
-    "orientation": "default",
+    "orientation": "landscape",
     "icon": "./assets/images/icon.png",
     "scheme": "infinystream",
     "userInterfaceStyle": "dark",

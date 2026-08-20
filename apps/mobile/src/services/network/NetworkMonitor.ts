@@ -1,6 +1,11 @@
 import * as Network from 'expo-network';
 import type { EventSubscription } from 'expo-modules-core';
-import { ThroughputEstimator, classifyNetworkQuality } from '@infiny-stream/shared';
+import {
+  ThroughputEstimator,
+  assessThroughputSample,
+  classifyNetworkQuality,
+  logThroughputSample,
+} from '@infiny-stream/shared';
 import type { ConnectionType, NetworkSample, NetworkState } from '@infiny-stream/types';
 
 type Listener = (state: NetworkState) => void;
@@ -21,27 +26,16 @@ function mapConnectionType(type: Network.NetworkStateType | undefined): Connecti
 }
 
 /**
- * App-wide network awareness, independent of whether a channel is
- * currently playing. Two layers of information, in priority order:
- *
- *  1. Real observed throughput (segment/manifest download timings, and
- *     stall events) reported by the player layer via reportSample /
- *     reportStall — the ground truth, per product rule #22 ("un WiFi peut
- *     être lent, une 4G peut être excellente").
- *  2. A provisional heuristic from the OS-reported connection type
- *     (WiFi/cellular/none), used only before any real sample exists —
- *     e.g. right after launch, on the Home screen, before the user has
- *     opened a channel. This is clearly a guess and is overridden the
- *     moment real measurements start arriving.
- *
- * This is a singleton: the whole app shares one throughput estimate,
- * because "how good is my connection right now" is a single fact, not
- * something each screen should measure independently.
+ * App-wide network awareness. Throughput samples are consultative for the
+ * quality label only — they never decide "offline". Offline comes solely
+ * from OS connectivity (no link / not reachable).
  */
 class NetworkMonitorImpl {
   private readonly estimator = new ThroughputEstimator();
   private connectionType: ConnectionType = 'unknown';
-  private hasRealSamples = false;
+  /** null = OS did not report reachability yet. */
+  private isInternetReachable: boolean | null = null;
+  private hasValidSamples = false;
   private listeners = new Set<Listener>();
   private subscription: EventSubscription | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -52,17 +46,18 @@ class NetworkMonitorImpl {
     try {
       const initial = await Network.getNetworkStateAsync();
       this.connectionType = mapConnectionType(initial.type);
+      this.isInternetReachable = initial.isInternetReachable ?? null;
     } catch {
       this.connectionType = 'unknown';
+      this.isInternetReachable = null;
     }
 
     this.subscription = Network.addNetworkStateListener((state) => {
       this.connectionType = mapConnectionType(state.type);
+      this.isInternetReachable = state.isInternetReachable ?? null;
       this.emit();
     });
 
-    // Even with no active playback, refresh the provisional state
-    // periodically so the Home screen indicator doesn't look frozen.
     this.pollTimer = setInterval(() => this.emit(), 5000);
   }
 
@@ -73,8 +68,36 @@ class NetworkMonitorImpl {
     this.pollTimer = null;
   }
 
+  /**
+   * Accept a timed download as a bandwidth sample only when large enough.
+   * Returns whether the sample was retained.
+   */
+  reportTimedDownload(bytes: number, elapsedMs: number, source = 'download'): boolean {
+    const assessment = assessThroughputSample(bytes, elapsedMs);
+    logThroughputSample(assessment, source);
+    if (!assessment.accepted) return false;
+
+    this.hasValidSamples = true;
+    this.estimator.addSample({
+      timestampMs: Date.now(),
+      throughputKbps: assessment.throughputKbps,
+      connectionType: this.connectionType,
+      fromStall: false,
+    });
+    this.emit();
+    return true;
+  }
+
   reportSample(sample: Omit<NetworkSample, 'connectionType'>): void {
-    this.hasRealSamples = true;
+    // Legacy path — still gate on absurdly low throughput from tiny transfers
+    // when callers pass a precomputed kbps without byte size. Prefer reportTimedDownload.
+    if (sample.throughputKbps > 0 && sample.throughputKbps < 50 && !sample.fromStall) {
+      console.log(
+        `[Throughput] REJECTED source=precomputed_kbps kbps=${sample.throughputKbps} reason=rejected_suspiciously_low`
+      );
+      return;
+    }
+    this.hasValidSamples = true;
     this.estimator.addSample({ ...sample, connectionType: this.connectionType });
     this.emit();
   }
@@ -83,32 +106,42 @@ class NetworkMonitorImpl {
     this.reportSample({ timestampMs: atMs, throughputKbps: observedKbps, fromStall: true });
   }
 
+  private isSystemOffline(): boolean {
+    if (this.connectionType === 'none') return true;
+    if (this.isInternetReachable === false) return true;
+    return false;
+  }
+
   getState(): NetworkState {
     const now = Date.now();
 
-    if (this.connectionType === 'none') {
-      return { quality: 'offline', connectionType: 'none', estimatedThroughputKbps: 0, isStable: false, lastUpdated: now };
-    }
-
-    if (this.hasRealSamples) {
-      const throughput = this.estimator.estimatedKbps;
-      const stable = this.estimator.isStable;
+    if (this.isSystemOffline()) {
       return {
-        quality: classifyNetworkQuality(throughput, stable),
+        quality: 'offline',
         connectionType: this.connectionType,
-        estimatedThroughputKbps: throughput,
-        isStable: stable,
+        estimatedThroughputKbps: 0,
+        isStable: false,
         lastUpdated: now,
       };
     }
 
-    // Provisional, connection-type-only guess (no real measurement yet).
-    const provisionalQuality = this.connectionType === 'wifi' || this.connectionType === 'ethernet' ? 'good' : 'medium';
+    if (!this.hasValidSamples || this.estimator.estimatedKbps <= 0) {
+      return {
+        quality: 'unknown',
+        connectionType: this.connectionType,
+        estimatedThroughputKbps: 0,
+        isStable: false,
+        lastUpdated: now,
+      };
+    }
+
+    const throughput = this.estimator.estimatedKbps;
+    const stable = this.estimator.isStable;
     return {
-      quality: provisionalQuality,
+      quality: classifyNetworkQuality(throughput, stable),
       connectionType: this.connectionType,
-      estimatedThroughputKbps: 0,
-      isStable: false,
+      estimatedThroughputKbps: throughput,
+      isStable: stable,
       lastUpdated: now,
     };
   }

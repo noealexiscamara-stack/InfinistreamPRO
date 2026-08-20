@@ -5,6 +5,7 @@ export * from './xtream/client';
 export * from './epg/xmltv';
 export * from './network/estimator';
 export * from './network/quality';
+export * from './network/throughputSample';
 export * from './playback/AdaptiveStreamingManager';
 export * from './playback/qualityModeProfiles';
 export * from './playback/ChannelTierSwitcher';

@@ -21,7 +21,8 @@ function resolveUri(uri: string, baseUrl: string): string {
  *    player straight at one rendition's URI instead of the master
  *    playlist — a standard technique to constrain playback to a specific
  *    tier when the player's own ABR track-selection isn't exposed at the
- *    JS layer (see AdaptiveStreamingManager module docs).
+ *    Native player (ExoPlayer) when given a master playlist — preferred path.
+ *    JS AdaptiveStreamingManager remains available for tests / non-native hosts.
  *
  * Returns an empty array when `content` is not a master playlist (e.g. it
  * is already a single-rendition media playlist, or a non-adaptive direct

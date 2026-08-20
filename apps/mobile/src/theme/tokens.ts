@@ -76,16 +76,17 @@ export const motion = {
   slow: 320,
 };
 
-export const networkQualityColor: Record<'excellent' | 'good' | 'medium' | 'low' | 'offline', string> = {
+export const networkQualityColor: Record<'excellent' | 'good' | 'medium' | 'low' | 'unknown' | 'offline', string> = {
   excellent: colors.networkExcellent,
   good: colors.networkGood,
   medium: colors.networkMedium,
   low: colors.networkLow,
+  unknown: colors.textTertiary,
   offline: colors.networkOffline,
 };
 
 /** Universe identity — shared between mobile home and future TV shell. */
-export type UniverseId = 'live' | 'movies' | 'series' | 'radios' | 'favorites' | 'search';
+export type UniverseId = 'live' | 'movies' | 'series' | 'radios' | 'replay' | 'favorites' | 'categories' | 'search';
 
 export interface UniverseTheme {
   /** Top → bottom tile gradient. */
@@ -111,6 +112,11 @@ export const universeThemes: Record<UniverseId, UniverseTheme> = {
     glow: 'rgba(45, 212, 191, 0.35)',
   },
   radios: {
+    gradient: ['#0D6B6B', '#071A1A'],
+    accent: '#2DD4BF',
+    glow: 'rgba(45, 212, 191, 0.28)',
+  },
+  replay: {
     gradient: ['#8B4A12', '#1A1008'],
     accent: '#F59E0B',
     glow: 'rgba(245, 158, 11, 0.35)',
@@ -119,6 +125,11 @@ export const universeThemes: Record<UniverseId, UniverseTheme> = {
     gradient: ['#7A2D5C', '#160810'],
     accent: '#F472B6',
     glow: 'rgba(244, 114, 182, 0.35)',
+  },
+  categories: {
+    gradient: ['#2A3140', '#0C0E14'],
+    accent: '#9AA3B2',
+    glow: 'rgba(154, 163, 178, 0.25)',
   },
   search: {
     gradient: ['#2A3140', '#0C0E14'],

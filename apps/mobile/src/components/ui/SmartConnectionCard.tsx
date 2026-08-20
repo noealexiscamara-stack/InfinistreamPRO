@@ -7,26 +7,23 @@ import { useSettingsStore } from '@/store/useSettingsStore';
 import {
   connectionDisplay,
   connectionLevelLabel,
-  currentQualityLabel,
-  hasNetworkMeasurement,
   qualityModeLabel,
   throughputLabel,
 } from '@/utils/networkDisplay';
+import { formatPlaybackHeight, usePlaybackQualityStore } from '@/store/usePlaybackQualityStore';
 
 export function SmartConnectionCard() {
   const network = useNetworkState();
   const qualityMode = useSettingsStore((s) => s.qualityMode);
-  const measured = hasNetworkMeasurement(network);
+  const playbackHeight = usePlaybackQualityStore((s) => s.height);
   const { title, subtitle } = connectionDisplay(network);
   const level = connectionLevelLabel(network);
-  const quality = currentQualityLabel(network);
+  const quality = formatPlaybackHeight(playbackHeight);
   const throughput = throughputLabel(network);
   const indicatorColor =
     network.quality === 'offline'
       ? networkQualityColor.offline
-      : measured
-        ? networkQualityColor[network.quality]
-        : networkQualityColor[network.quality];
+      : networkQualityColor[network.quality];
 
   return (
     <GlassCard style={[styles.card, elevation.cardGlow(indicatorColor)]}>
@@ -58,7 +55,9 @@ export function SmartConnectionCard() {
           {network.isStable ? ' · Stable' : ''}
         </Text>
       ) : (
-        <Text style={styles.hint}>La qualité vidéo s’affiche dès qu’une chaîne est en lecture.</Text>
+        <Text style={styles.hint}>
+          Qualité vidéo = piste active du lecteur (— hors lecture). Les modes ne règlent que le tampon.
+        </Text>
       )}
     </GlassCard>
   );
