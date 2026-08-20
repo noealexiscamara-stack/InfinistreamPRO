@@ -2,7 +2,7 @@
   "expo": {
     "name": "Infiny Stream",
     "slug": "infiny-stream",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "infinystream",
