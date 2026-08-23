@@ -23,18 +23,17 @@ import { getKindCounts } from '@/services/channelsRepository';
 
 const LAYOUT_REF_WIDTH = 960;
 /** Target content stack height in landscape — scale down when the viewport is shorter. */
-const LAYOUT_REF_HEIGHT = 400;
-const TAB_BAR_HEIGHT = 52;
+const LAYOUT_REF_HEIGHT = 420;
 
 export default function HomeScreen() {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
-  const availableHeight = height - insets.top - TAB_BAR_HEIGHT - insets.bottom;
+  const availableHeight = height - insets.top - insets.bottom;
   const widthScale = Math.min(1, Math.max(0.72, width / LAYOUT_REF_WIDTH));
-  const heightScale = Math.min(1, Math.max(0.62, availableHeight / LAYOUT_REF_HEIGHT));
+  const heightScale = Math.min(1, Math.max(0.58, availableHeight / LAYOUT_REF_HEIGHT));
   const scale = Math.min(widthScale, heightScale);
-  const dense = availableHeight < 380;
+  const dense = availableHeight < 420;
 
   const sources = useSourcesStore((s) => s.sources);
   const loadSources = useSourcesStore((s) => s.load);
@@ -87,7 +86,7 @@ export default function HomeScreen() {
 
   return (
     <LinearGradient colors={[colors.background, colors.backgroundGlow, colors.background]} style={styles.gradient}>
-      <ScreenSafeArea style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <ScreenSafeArea style={styles.safeArea}>
         <View style={[styles.page, { paddingHorizontal: padH, paddingVertical: padV, gap }]}>
           <CardErrorBoundary name="header">
             <HomeHeader scale={scale} />
