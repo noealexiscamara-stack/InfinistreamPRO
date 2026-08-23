@@ -76,6 +76,8 @@ export class PlayerController {
   private qualityMode: QualityMode = 'auto';
   private disposed = false;
   private unsubNetwork: (() => void) | null = null;
+  /** Wall-clock when the current source was handed to the player. */
+  private loadStartedAtMs = 0;
 
   constructor(player: VideoPlayer) {
     this.player = player;
@@ -144,12 +146,23 @@ export class PlayerController {
     if (this.disposed) return;
     this.currentStreamUrl = url;
     this.lastKnownSafeUrl = url;
+    this.loadStartedAtMs = Date.now();
     const source: VideoSource = isLikelyHls(url)
       ? { uri: url, contentType: 'hls' }
       : { uri: url };
     console.log(`[Player] setSource hls=${isLikelyHls(url)} url=${url.slice(0, 120)}`);
     this.player.replace(source);
     if (!this.disposed) this.player.play();
+  }
+
+  getCurrentStreamUrl(): string {
+    return this.currentStreamUrl || this.lastKnownSafeUrl;
+  }
+
+  /** Ms since the last setSource — used for failure diagnostics. */
+  getTimeSinceLoadMs(): number {
+    if (!this.loadStartedAtMs) return 0;
+    return Math.max(0, Date.now() - this.loadStartedAtMs);
   }
 
   /**

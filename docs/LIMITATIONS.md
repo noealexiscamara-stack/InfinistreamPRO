@@ -50,6 +50,10 @@ Sans module natif (TrackSelectionParameters Media3), le mode utilisateur **ne pe
 résolution. Ne pas réintroduire de libellés ou de logique qui suggèrent le contraire. « Hors ligne » vient
 uniquement de la connectivité système (`expo-network`), jamais d'une estimation de débit.
 
+Les échecs de lecture sont journalisés dans **Réglages → Diagnostic lecture** (code / message expo-video,
+URL, durée avant panne). expo-video n'expose pas toujours le code ExoPlayer natif complet — le champ
+`rawErrorJson` capture tout ce que le bridge JS renvoie.
+
 **Prochaine étape recommandée** : module Expo Kotlin exposant un plafond bitrate/hauteur Media3 si le produit
 exige un vrai plafond Économie (480p) côté lecteur.
 

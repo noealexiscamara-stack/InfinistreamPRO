@@ -198,10 +198,15 @@ export default function RootLayout() {
           <Stack.Screen name="universe/series/index" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="universe/series/[seriesId]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="player/[channelId]" options={{ animation: 'fade', presentation: 'fullScreenModal' }} />
+          <Stack.Screen name="diagnostics/playback" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="add-source/index" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
           <Stack.Screen name="add-source/m3u-url" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
           <Stack.Screen name="add-source/m3u-file" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
           <Stack.Screen name="add-source/xtream" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="playlists/index" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="playlists/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="account/index" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="subscription/index" options={{ animation: 'slide_from_right' }} />
           </Stack>
         </RadioPlaybackProvider>
       </GestureHandlerRootView>
