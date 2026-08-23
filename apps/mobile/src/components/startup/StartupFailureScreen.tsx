@@ -1,5 +1,5 @@
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 export interface StartupFailureScreenProps {
@@ -32,7 +32,7 @@ export function StartupFailureScreen({
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <ScreenSafeArea style={styles.safeArea}>
       <View style={styles.card}>
         <Text style={styles.title}>Le démarrage a échoué</Text>
         <Text style={styles.step}>Étape : {step}</Text>
@@ -54,7 +54,7 @@ export function StartupFailureScreen({
           <Text style={styles.resetLinkLabel}>Réinitialiser les données locales…</Text>
         </Pressable>
       </View>
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { router } from 'expo-router';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,7 +25,7 @@ export default function RadiosUniverseScreen() {
   }, [reload]);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <ScreenSafeArea style={styles.safeArea}>
       <UniverseHeader title="Radios" />
 
       {radios.length === 0 ? (
@@ -69,7 +69,7 @@ export default function RadiosUniverseScreen() {
           )}
         />
       )}
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 

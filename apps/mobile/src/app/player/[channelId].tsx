@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useVideoPlayer, VideoView, type VideoPlayerStatus } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import type { Channel, GroupedChannel } from '@infiny-stream/types';
@@ -17,6 +17,10 @@ import { isXtreamSeriesPlaceholder } from '@/services/persistChannels';
 import { useRadioPlayback } from '@/services/playback/RadioPlaybackProvider';
 import { connectionLevelLabel } from '@/utils/networkDisplay';
 import { formatPlaybackHeight, usePlaybackQualityStore } from '@/store/usePlaybackQualityStore';
+import {
+  extractPlayerError,
+  usePlaybackDiagnosticsStore,
+} from '@/store/usePlaybackDiagnosticsStore';
 
 type PlayerScreenState = 'loading' | 'playing' | 'reconnecting' | 'error';
 
@@ -35,6 +39,8 @@ export default function PlayerScreen() {
   const playbackHeight = usePlaybackQualityStore((s) => s.height);
   const setPlaybackHeight = usePlaybackQualityStore((s) => s.setHeight);
   const clearPlaybackQuality = usePlaybackQualityStore((s) => s.clear);
+  const recordFailure = usePlaybackDiagnosticsStore((s) => s.recordFailure);
+  const [lastErrorSummary, setLastErrorSummary] = useState<string | null>(null);
   const toggleFavorite = useFavoritesStore((s) => s.toggle);
   const isFavorite = useFavoritesStore((s) => s.isFavorite);
   const { playRadio, stopRadio, activeChannel: activeRadio } = useRadioPlayback();
@@ -148,11 +154,46 @@ export default function PlayerScreen() {
   }, [qualityMode]);
 
   useEffect(() => {
-    const statusSub = player.addListener('statusChange', (event: { status: VideoPlayerStatus }) => {
-      if (event.status === 'error') {
-        controllerRef.current?.handlePlaybackError('source');
+    const statusSub = player.addListener(
+      'statusChange',
+      (event: { status: VideoPlayerStatus; error?: unknown }) => {
+        if (event.status !== 'error') return;
+
+        const controller = controllerRef.current;
+        const streamUrl = controller?.getCurrentStreamUrl() ?? channel?.streamUrl ?? '';
+        const timeToFailureMs = controller?.getTimeSinceLoadMs() ?? 0;
+        const fromEvent = extractPlayerError(event.error);
+        const fromPlayer = extractPlayerError((player as { error?: unknown }).error);
+        const extracted =
+          fromEvent.message !== 'Erreur inconnue (pas de détail exposé)' ? fromEvent : fromPlayer;
+
+        console.error('[Player] status=error', {
+          channel: channel?.name,
+          streamUrl,
+          timeToFailureMs,
+          code: extracted.code,
+          message: extracted.message,
+          raw: extracted.raw,
+        });
+
+        if (channel) {
+          recordFailure({
+            channelId: channel.id,
+            channelName: group?.name ?? channel.name,
+            streamUrl,
+            errorCode: extracted.code,
+            errorMessage: extracted.message,
+            timeToFailureMs,
+            rawErrorJson: extracted.raw.slice(0, 4000),
+          });
+        }
+        setLastErrorSummary(
+          [extracted.code, extracted.message].filter(Boolean).join(' — ') || 'Erreur lecteur'
+        );
+
+        void controller?.handlePlaybackError('source');
       }
-    });
+    );
     const trackSub = player.addListener(
       'videoTrackChange',
       (event: { videoTrack: { size?: { height?: number } } | null }) => {
@@ -164,7 +205,7 @@ export default function PlayerScreen() {
       statusSub.remove();
       trackSub.remove();
     };
-  }, [player, setPlaybackHeight]);
+  }, [player, setPlaybackHeight, recordFailure, channel, group]);
 
   const currentIndex = useMemo(() => siblings.findIndex((g) => g.id === group?.id), [siblings, group]);
 
@@ -215,9 +256,20 @@ export default function PlayerScreen() {
           <View style={styles.overlay}>
             <Ionicons name="alert-circle-outline" size={40} color={colors.danger} />
             <Text style={styles.overlayTitle}>Impossible de lire cette chaîne.</Text>
+            {!!lastErrorSummary && (
+              <Text style={styles.errorDetail} numberOfLines={4}>
+                {lastErrorSummary}
+              </Text>
+            )}
             <View style={styles.overlayActions}>
               <Pressable style={styles.overlayButton} onPress={handleRetry}>
                 <Text style={styles.overlayButtonLabel}>Réessayer</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.overlayButton, styles.overlayButtonGhost]}
+                onPress={() => router.push('/diagnostics/playback' as Href)}
+              >
+                <Text style={styles.overlayButtonLabel}>Diagnostic</Text>
               </Pressable>
               <Pressable style={[styles.overlayButton, styles.overlayButtonGhost]} onPress={handleBack}>
                 <Text style={styles.overlayButtonLabel}>Retour</Text>
@@ -306,6 +358,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.55)',
   },
   overlayTitle: { ...typography.headline, color: colors.textPrimary, textAlign: 'center', paddingHorizontal: spacing.xl },
+  errorDetail: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    paddingHorizontal: spacing.xl,
+    maxWidth: 480,
+  },
   overlayActions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
   overlayButton: { backgroundColor: colors.brand, paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, borderRadius: radius.md },
   overlayButtonGhost: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },

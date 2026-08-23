@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
@@ -13,7 +13,7 @@ const OPTIONS: Array<{ icon: keyof typeof Ionicons.glyphMap; title: string; desc
 
 export default function AddSourceScreen() {
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+    <ScreenSafeArea style={styles.safeArea}>
       <View style={styles.header}>
         <Text style={styles.title}>Ajouter une playlist</Text>
         <Pressable onPress={() => router.back()} hitSlop={12}>
@@ -42,7 +42,7 @@ export default function AddSourceScreen() {
         Infiny Stream est un lecteur : il ne fournit aucune chaîne. Utilisez uniquement des sources auxquelles vous avez
         légalement accès.
       </Text>
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 

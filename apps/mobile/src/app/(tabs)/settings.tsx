@@ -1,6 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { APP_NAME } from '@infiny-stream/config';
@@ -32,7 +32,7 @@ export default function SettingsScreen() {
   const version = Constants.expoConfig?.version ?? '0.1.0';
 
   return (
-    <ScreenSafeArea style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <ScreenSafeArea style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Réglages</Text>
 
@@ -62,6 +62,12 @@ export default function SettingsScreen() {
           <Text style={styles.sectionTitle}>Contenu</Text>
           <GlassCard padded={false}>
             <Row icon="albums-outline" label="Mes playlists" onPress={() => router.push('/playlists')} />
+            <Row
+              icon="bug-outline"
+              label="Diagnostic lecture"
+              meta="Erreurs ExoPlayer"
+              onPress={() => router.push('/diagnostics/playback' as Href)}
+            />
           </GlassCard>
         </View>
 

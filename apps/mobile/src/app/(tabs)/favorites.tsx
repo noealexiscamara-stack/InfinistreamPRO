@@ -25,7 +25,7 @@ export default function FavoritesScreen() {
   );
 
   return (
-    <ScreenSafeArea style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <ScreenSafeArea style={styles.safeArea}>
       <Text style={styles.title}>Favoris</Text>
 
       {groups.length === 0 ? (

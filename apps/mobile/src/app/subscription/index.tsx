@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography } from '@/theme/tokens';
@@ -62,7 +62,7 @@ export default function SubscriptionScreen() {
     : "Statut vérifié par nos serveurs à chaque ouverture de cet écran (règle produit #41).";
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+    <ScreenSafeArea style={styles.safeArea}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={12}>
           <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
@@ -119,7 +119,7 @@ export default function SubscriptionScreen() {
           </>
         )}
       </View>
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 

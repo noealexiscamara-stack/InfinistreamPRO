@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { router } from 'expo-router';
 import { colors, spacing, typography } from '@/theme/tokens';
 import { TextField } from '@/components/ui/TextField';
@@ -43,7 +43,7 @@ export default function AddM3uUrlScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <ScreenSafeArea style={styles.safeArea}>
       <Text style={styles.title}>URL M3U</Text>
       <Text style={styles.subtitle}>Collez le lien de votre playlist M3U.</Text>
 
@@ -69,7 +69,7 @@ export default function AddM3uUrlScreen() {
       {isLoading && <Text style={styles.progress}>{progressLabel(progress)}</Text>}
 
       <Button label="Ajouter" onPress={handleSubmit} disabled={!canSubmit} loading={isLoading} />
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 

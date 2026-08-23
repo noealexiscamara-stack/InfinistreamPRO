@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { router } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -49,7 +49,7 @@ export default function AddM3uFileScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <ScreenSafeArea style={styles.safeArea}>
       <Text style={styles.title}>Fichier M3U</Text>
       <Text style={styles.subtitle}>Importez un fichier .m3u ou .m3u8 depuis votre appareil.</Text>
 
@@ -65,7 +65,7 @@ export default function AddM3uFileScreen() {
       {error && <ImportErrorBanner error={error} onRetry={handleSubmit} retryDisabled={isLoading || !pickedFile} />}
 
       <Button label="Ajouter" onPress={handleSubmit} disabled={!pickedFile} loading={isLoading} />
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 

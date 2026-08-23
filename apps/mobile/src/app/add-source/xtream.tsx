@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { router } from 'expo-router';
 import { colors, spacing, typography } from '@/theme/tokens';
 import { TextField } from '@/components/ui/TextField';
@@ -36,7 +36,7 @@ export default function AddXtreamScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <ScreenSafeArea style={styles.safeArea}>
       <Text style={styles.title}>Connexion Xtream</Text>
       <Text style={styles.subtitle}>Renseignez les identifiants fournis par votre fournisseur Xtream Codes.</Text>
 
@@ -69,7 +69,7 @@ export default function AddXtreamScreen() {
       {error && <ImportErrorBanner error={error} onRetry={handleSubmit} retryDisabled={isLoading || !canSubmit} />}
 
       <Button label="Se connecter" onPress={handleSubmit} disabled={!canSubmit} loading={isLoading} />
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 

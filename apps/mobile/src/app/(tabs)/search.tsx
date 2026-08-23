@@ -44,7 +44,7 @@ export default function SearchScreen() {
   }, [query]);
 
   return (
-    <ScreenSafeArea style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <ScreenSafeArea style={styles.safeArea}>
       <View style={styles.header}>
         <Text style={styles.title}>Recherche</Text>
         <TextField

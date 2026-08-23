@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import type { Source } from '@infiny-stream/types';
@@ -42,7 +42,7 @@ export default function PlaylistsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <ScreenSafeArea style={styles.safeArea}>
       <View style={styles.header}>
         <Text style={styles.title}>Mes playlists</Text>
         <Pressable onPress={() => router.push('/add-source')} hitSlop={12}>
@@ -100,7 +100,7 @@ export default function PlaylistsScreen() {
           )}
         />
       )}
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 

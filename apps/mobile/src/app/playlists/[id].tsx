@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import type { ChannelCategory, GroupedChannel } from '@infiny-stream/types';
@@ -40,7 +40,7 @@ export default function PlaylistChannelsScreen() {
   }, [id, selectedCategory]);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <ScreenSafeArea style={styles.safeArea}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={12}>
           <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
@@ -96,7 +96,7 @@ export default function PlaylistChannelsScreen() {
           removeClippedSubviews
         />
       ) : null}
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 

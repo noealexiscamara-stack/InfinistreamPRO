@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Device from 'expo-device';
@@ -22,7 +22,7 @@ export default function AccountScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+    <ScreenSafeArea style={styles.safeArea}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={12}>
           <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
@@ -72,7 +72,7 @@ export default function AccountScreen() {
           </View>
         </GlassCard>
       </View>
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 

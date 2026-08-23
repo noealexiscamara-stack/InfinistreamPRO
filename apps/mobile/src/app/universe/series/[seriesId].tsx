@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { groupEpisodesIntoSeries } from '@infiny-stream/shared';
@@ -147,7 +147,7 @@ export default function SeriesDetailScreen() {
   const seasonOptions = xtreamSeasons.length > 0 ? xtreamSeasons : seasons.map((s) => s.season);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <ScreenSafeArea style={styles.safeArea}>
       <UniverseHeader title={title} />
 
       {loading ? (
@@ -204,7 +204,7 @@ export default function SeriesDetailScreen() {
           )}
         />
       )}
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 

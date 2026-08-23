@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -48,7 +48,7 @@ export default function OnboardingScreen() {
 
   return (
     <LinearGradient colors={[colors.background, '#131726']} style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <ScreenSafeArea style={styles.safeArea}>
         <View style={styles.brand}>
           <Text style={styles.appName}>{APP_NAME}</Text>
           <Text style={styles.tagline}>{APP_TAGLINE}</Text>
@@ -72,7 +72,7 @@ export default function OnboardingScreen() {
           <Button label={isLastStep ? 'Ajouter une source' : 'Suivant'} onPress={isLastStep ? goToAddSource : handleNext} />
           {isLastStep && <Button label="Plus tard" variant="ghost" onPress={completeOnboarding} />}
         </View>
-      </SafeAreaView>
+      </ScreenSafeArea>
     </LinearGradient>
   );
 }
