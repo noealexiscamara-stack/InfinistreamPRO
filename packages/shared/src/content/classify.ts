@@ -6,7 +6,8 @@ export interface ClassifiableEntry {
   groupTitle?: string;
 }
 
-const PATH_KIND: Array<{ segment: string; kind: ContentKind }> = [
+/** Xtream Codes path segments — the only authoritative kind signal outside API tags. */
+const XTREAM_PATH_KIND: Array<{ segment: string; kind: ContentKind }> = [
   { segment: 'movie', kind: 'movie' },
   { segment: 'movies', kind: 'movie' },
   { segment: 'vod', kind: 'movie' },
@@ -16,18 +17,6 @@ const PATH_KIND: Array<{ segment: string; kind: ContentKind }> = [
 ];
 
 const AUDIO_EXTENSIONS = ['.mp3', '.aac', '.m4a', '.ogg', '.opus', '.wav', '.flac'];
-const VOD_EXTENSIONS = ['.mkv', '.mp4', '.avi', '.mov', '.m4v', '.webm'];
-/** Live streaming containers — thematic M3U groups ("FILMS", "SÉRIES") are channel folders, not VOD. */
-const LIVE_STREAM_EXTENSIONS = ['.m3u8', '.m3u', '.ts'];
-
-const GROUP_PATTERNS: Array<{ kind: ContentKind; words: string[] }> = [
-  { kind: 'radio', words: ['radio', 'radios', 'fm', 'webradio', 'web radio'] },
-  {
-    kind: 'series',
-    words: ['series', 'serie', 'seasons', 'saison', 'saisons', 'tv show', 'tv shows', 'shows', 'novelas'],
-  },
-  { kind: 'movie', words: ['movie', 'movies', 'film', 'films', 'vod', 'cinema', 'peliculas'] },
-];
 
 const EPISODE_PATTERNS = [
   /\bS(\d{1,2})\s*[EX](\d{1,3})\b/i,
@@ -36,11 +25,25 @@ const EPISODE_PATTERNS = [
   /\bseason\s*(\d{1,2})\s*episode\s*(\d{1,3})\b/i,
 ];
 
-function fold(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+function pathSegments(streamUrl: string): string[] {
+  try {
+    return new URL(streamUrl).pathname.toLowerCase().split('/').filter(Boolean);
+  } catch {
+    return streamUrl.toLowerCase().split(/[/?#]/).filter(Boolean);
+  }
+}
+
+function extensionOf(streamUrl: string): string {
+  const segments = pathSegments(streamUrl);
+  const last = segments[segments.length - 1] ?? '';
+  const dot = last.lastIndexOf('.');
+  return dot >= 0 ? last.slice(dot) : '';
+}
+
+/** True when the stream URL carries an Xtream-style path segment (/live/, /movie/, …). */
+export function hasXtreamPathSegment(streamUrl: string): boolean {
+  const segments = pathSegments(streamUrl);
+  return XTREAM_PATH_KIND.some(({ segment }) => segments.includes(segment));
 }
 
 export function parseEpisodeMarker(name: string): { season: number; episode: number } | null {
@@ -85,39 +88,20 @@ export function stripEpisodeMarker(name: string): string {
   return splitEpisodeName(name).seriesTitle;
 }
 
-function pathSegments(streamUrl: string): string[] {
-  try {
-    return new URL(streamUrl).pathname.toLowerCase().split('/').filter(Boolean);
-  } catch {
-    return streamUrl.toLowerCase().split(/[/?#]/).filter(Boolean);
-  }
-}
-
-function extensionOf(streamUrl: string): string {
-  const segments = pathSegments(streamUrl);
-  const last = segments[segments.length - 1] ?? '';
-  const dot = last.lastIndexOf('.');
-  return dot >= 0 ? last.slice(dot) : '';
-}
-
 /**
- * True when the URL is a live/linear stream container or an extension-less
- * IPTV endpoint (http://host:port/id). Group titles like "CINEMA & FILMS" /
- * "SÉRIES" then mean thematic live folders, not on-demand catalogs —
- * verified against playlist_finale.m3u (owner-confirmed live-only).
+ * Classifies a playlist entry.
+ *
+ * M3U rule (Smarters-aligned): everything is live TV. `group-title` is a
+ * display category only — never a content-type signal. The sole exception is
+ * a reliable audio file extension (.mp3, .aac, …) → radio.
+ *
+ * Xtream rule: path segments (/movie/, /series/, /live/) are authoritative;
+ * episode markers on /movie/ URLs still promote to series.
  */
-export function looksLikeLiveStream(streamUrl: string): boolean {
-  const ext = extensionOf(streamUrl);
-  if (LIVE_STREAM_EXTENSIONS.includes(ext)) return true;
-  // No file extension → almost always a live IPTV path, never a VOD container.
-  if (!ext) return true;
-  return false;
-}
-
 export function classifyEntry(entry: ClassifiableEntry): ContentKind {
   const segments = pathSegments(entry.streamUrl);
 
-  for (const { segment, kind } of PATH_KIND) {
+  for (const { segment, kind } of XTREAM_PATH_KIND) {
     if (segments.includes(segment)) {
       if (kind === 'movie' && parseEpisodeMarker(entry.name)) return 'series';
       return kind;
@@ -126,25 +110,6 @@ export function classifyEntry(entry: ClassifiableEntry): ContentKind {
 
   const ext = extensionOf(entry.streamUrl);
   if (AUDIO_EXTENSIONS.includes(ext)) return 'radio';
-  if (VOD_EXTENSIONS.includes(ext)) {
-    return parseEpisodeMarker(entry.name) ? 'series' : 'movie';
-  }
-
-  const liveStream = looksLikeLiveStream(entry.streamUrl);
-  const group = fold(entry.groupTitle ?? '');
-  if (group) {
-    for (const { kind, words } of GROUP_PATTERNS) {
-      if (words.some((w) => new RegExp(`(^|[^a-z0-9])${w}([^a-z0-9]|$)`).test(group))) {
-        // Thematic live folders ("📺 SÉRIES", "🎬 CINEMA & FILMS") must stay live.
-        if (liveStream && (kind === 'movie' || kind === 'series')) continue;
-        if (kind === 'movie' && parseEpisodeMarker(entry.name)) return 'series';
-        return kind;
-      }
-    }
-  }
-
-  // Episode markers on live HLS/TS names are not VOD episodes (e.g. channel branding).
-  if (!liveStream && parseEpisodeMarker(entry.name)) return 'series';
 
   return 'live';
 }

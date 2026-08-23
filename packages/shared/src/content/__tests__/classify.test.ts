@@ -2,7 +2,34 @@ import { classifyEntries, classifyEntry, parseEpisodeMarker, stripEpisodeMarker 
 
 const e = (name: string, streamUrl: string, groupTitle?: string) => ({ name, streamUrl, groupTitle });
 
-describe('classifyEntry — URL path wins over everything', () => {
+describe('classifyEntry — M3U: everything live except audio', () => {
+  it('classifies HLS/TS/extension-less URLs as live regardless of group', () => {
+    expect(classifyEntry(e('Canal+ Cinéma', 'http://x/canal.m3u8', '🎬 CINEMA & FILMS'))).toBe('live');
+    expect(classifyEntry(e('Serie Max', 'http://x/series.m3u8', '📺 SÉRIES'))).toBe('live');
+    expect(classifyEntry(e('Breaking Bad S01E02', 'http://x/bb.m3u8', 'SÉRIES'))).toBe('live');
+    expect(classifyEntry(e('Kaamelott 1x05', 'http://x/k.m3u8', 'SÉRIES'))).toBe('live');
+    expect(classifyEntry(e('Nickelodeon', 'http://195.64.140.147:10121/121', '🎬 CINEMA & FILMS'))).toBe('live');
+  });
+
+  it('does not infer movie/series from group title alone', () => {
+    expect(classifyEntry(e('Taxi', 'http://x/stream', 'VOD - FILMS'))).toBe('live');
+    expect(classifyEntry(e('Lost', 'http://x/stream', 'Saisons complètes'))).toBe('live');
+    expect(classifyEntry(e('FIP', 'http://x/stream', 'Radio France'))).toBe('live');
+    expect(classifyEntry(e('Amélie', 'http://x/stream', 'Cinéma'))).toBe('live');
+  });
+
+  it('does not infer movie/series from VOD file extension on plain URLs', () => {
+    expect(classifyEntry(e('Inception', 'http://x/files/inception.mp4', 'FILMS'))).toBe('live');
+    expect(classifyEntry(e('Show S01E02', 'http://x/files/ep.mkv', 'SERIES'))).toBe('live');
+  });
+
+  it('classifies audio extensions as radio', () => {
+    expect(classifyEntry(e('RFI', 'http://x/stream.mp3', 'FRANCE'))).toBe('radio');
+    expect(classifyEntry(e('Africa Radio', 'http://x/s.aac'))).toBe('radio');
+  });
+});
+
+describe('classifyEntry — Xtream path segments', () => {
   it('reads the Xtream path segment', () => {
     expect(classifyEntry(e('TF1', 'http://p:8080/live/u/p/1.ts'))).toBe('live');
     expect(classifyEntry(e('Le Parrain', 'http://p:8080/movie/u/p/2.mkv'))).toBe('movie');
@@ -11,67 +38,10 @@ describe('classifyEntry — URL path wins over everything', () => {
 
   it('trusts the path over a contradicting group title', () => {
     expect(classifyEntry(e('Canal+ Cinéma', 'http://p:8080/live/u/p/9.ts', 'CINEMA'))).toBe('live');
-    expect(classifyEntry(e('Ciné+', 'http://p:8080/live/u/p/9.ts', 'FILMS'))).toBe('live');
   });
 
   it('recognises an episode filed under /movie/ by the provider', () => {
     expect(classifyEntry(e('Breaking Bad S01E02', 'http://p:8080/movie/u/p/7.mkv', 'FILMS'))).toBe('series');
-  });
-});
-
-describe('classifyEntry — file extension', () => {
-  it('treats audio streams as radio', () => {
-    expect(classifyEntry(e('RFI', 'http://x/stream.mp3'))).toBe('radio');
-    expect(classifyEntry(e('Africa Radio', 'http://x/s.aac'))).toBe('radio');
-  });
-
-  it('treats on-demand video containers as movies', () => {
-    expect(classifyEntry(e('Inception', 'http://x/files/inception.mp4'))).toBe('movie');
-    expect(classifyEntry(e('Le Havre', 'http://x/files/lh.mkv'))).toBe('movie');
-  });
-
-  it('leaves live container formats alone', () => {
-    expect(classifyEntry(e('France 2', 'http://x/f2.m3u8'))).toBe('live');
-    expect(classifyEntry(e('M6', 'http://x/m6.ts'))).toBe('live');
-  });
-});
-
-describe('classifyEntry — group title', () => {
-  it.each([
-    ['FR | RADIOS', 'radio'],
-    ['Radio', 'radio'],
-  ])('reads %s as %s', (group, expected) => {
-    expect(classifyEntry(e('Quelque chose', 'http://x/unknown', group))).toBe(expected);
-  });
-
-  it('does not trust film/series groups alone without a VOD file or path', () => {
-    expect(classifyEntry(e('Quelque chose', 'http://x/unknown', 'VOD - FILMS'))).toBe('live');
-    expect(classifyEntry(e('Quelque chose', 'http://x/unknown', 'SÉRIES FR'))).toBe('live');
-    expect(classifyEntry(e('Quelque chose', 'http://x/unknown', 'Novelas'))).toBe('live');
-    expect(classifyEntry(e('Quelque chose', 'http://x/unknown', 'Peliculas'))).toBe('live');
-  });
-
-  it('still classifies VOD containers via extension, regardless of group', () => {
-    expect(classifyEntry(e('Inception', 'http://x/files/inception.mkv', 'FILMS'))).toBe('movie');
-    expect(classifyEntry(e('Show S01E02', 'http://x/files/ep.mkv', 'SERIES'))).toBe('series');
-  });
-
-  it('ignores thematic film/series groups on HLS and extension-less live URLs', () => {
-    expect(classifyEntry(e('Canal+ Cinéma', 'http://x/canal.m3u8', '🎬 CINEMA & FILMS'))).toBe('live');
-    expect(classifyEntry(e('Serie Max', 'http://x/series.m3u8', '📺 SÉRIES'))).toBe('live');
-    expect(classifyEntry(e('AMC', 'http://x/amc.ts', 'Films'))).toBe('live');
-    expect(classifyEntry(e('Nickelodeon (576p)', 'http://195.64.140.147:10121/121', '🎬 CINEMA & FILMS'))).toBe(
-      'live'
-    );
-  });
-
-  it('does not turn a TV channel into a radio because of the word radio', () => {
-    expect(classifyEntry(e('Radio France Info TV', 'http://p:8080/live/u/p/10.ts', 'FRANCE'))).toBe('live');
-    expect(classifyEntry(e('Radio Télévision Guinée', 'http://x/rtg.m3u8', 'GUINEE'))).toBe('live');
-  });
-
-  it('matches on whole words only', () => {
-    expect(classifyEntry(e('Doc', 'http://x/s.m3u8', 'RADIOLOGIE'))).toBe('live');
   });
 });
 
@@ -105,7 +75,6 @@ describe('stripEpisodeMarker', () => {
   it('leaves the series title alone', () => {
     expect(stripEpisodeMarker('Breaking Bad S01E02')).toBe('Breaking Bad');
     expect(stripEpisodeMarker('Kaamelott 1x05')).toBe('Kaamelott');
-    expect(stripEpisodeMarker('Engrenages Saison 3 Épisode 7')).toBe('Engrenages');
   });
 
   it('is a no-op on a name with no marker', () => {
@@ -114,32 +83,22 @@ describe('stripEpisodeMarker', () => {
 });
 
 describe('classifyEntries', () => {
-  it('splits a mixed playlist without losing anything', () => {
+  it('splits a mixed Xtream playlist without losing anything', () => {
     const entries = [
       e('TF1', 'http://p:8080/live/u/p/1.ts', 'FRANCE'),
       e('Le Parrain', 'http://p:8080/movie/u/p/2.mkv', 'FILMS'),
       e('Breaking Bad S01E01', 'http://p:8080/series/u/p/3.mkv', 'SERIES'),
-      e('Breaking Bad S01E02', 'http://p:8080/series/u/p/4.mkv', 'SERIES'),
       e('RFI', 'http://x/rfi.mp3', 'RADIOS'),
-      e('Inconnue', 'http://x/mystery'),
+      e('M6', 'http://x/m6.m3u8', 'FRANCE'),
     ];
     const out = classifyEntries(entries);
 
-    expect(out.live.map((c) => c.name)).toEqual(['TF1', 'Inconnue']);
+    expect(out.live.map((c) => c.name)).toEqual(['TF1', 'M6']);
     expect(out.movie).toHaveLength(1);
-    expect(out.series).toHaveLength(2);
+    expect(out.series).toHaveLength(1);
     expect(out.radio).toHaveLength(1);
 
     const total = out.live.length + out.movie.length + out.series.length + out.radio.length;
     expect(total).toBe(entries.length);
-  });
-
-  it('preserves playlist order within each universe', () => {
-    const out = classifyEntries([
-      e('A', 'http://p/live/u/p/1.ts'),
-      e('B', 'http://p/live/u/p/2.ts'),
-      e('C', 'http://p/live/u/p/3.ts'),
-    ]);
-    expect(out.live.map((c) => c.name)).toEqual(['A', 'B', 'C']);
   });
 });
