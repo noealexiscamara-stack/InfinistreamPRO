@@ -1,8 +1,13 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/theme/tokens';
 
+const TAB_BAR_HEIGHT = 52;
+
 export default function TabsLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
@@ -13,10 +18,11 @@ export default function TabsLayout() {
           backgroundColor: colors.backgroundElevated,
           borderTopColor: colors.border,
           borderTopWidth: 1,
+          height: TAB_BAR_HEIGHT + insets.bottom,
+          paddingBottom: Math.max(insets.bottom, 4),
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
         },
-        // Android TV: the tab bar becomes reachable via D-pad focus; icons
-        // stay large enough to read from a couch distance (see
-        // features/settings docs on the Android TV focus pass).
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
       }}
     >

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import type { GroupedChannel } from '@infiny-stream/types';
@@ -44,7 +44,7 @@ export default function SearchScreen() {
   }, [query]);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <ScreenSafeArea style={styles.safeArea} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <Text style={styles.title}>Recherche</Text>
         <TextField
@@ -85,7 +85,7 @@ export default function SearchScreen() {
           );
         }}
       />
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 

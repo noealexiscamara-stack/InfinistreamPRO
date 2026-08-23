@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { Stack, router, type ErrorBoundaryProps } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { colors } from '@/theme/tokens';
 import { StartupFailureScreen } from '@/components/startup/StartupFailureScreen';
@@ -175,10 +176,11 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
-      <RadioPlaybackProvider>
-        <StatusBar style="light" />
-        <Stack
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
+        <RadioPlaybackProvider>
+          <StatusBar style="light" />
+          <Stack
           screenOptions={{
             headerShown: false,
             contentStyle: { backgroundColor: colors.background },
@@ -200,8 +202,9 @@ export default function RootLayout() {
           <Stack.Screen name="add-source/m3u-url" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
           <Stack.Screen name="add-source/m3u-file" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
           <Stack.Screen name="add-source/xtream" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-        </Stack>
-      </RadioPlaybackProvider>
-    </GestureHandlerRootView>
+          </Stack>
+        </RadioPlaybackProvider>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }

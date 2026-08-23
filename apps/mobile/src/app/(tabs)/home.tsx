@@ -7,7 +7,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
 import type { ContentKind } from '@infiny-stream/types';
@@ -81,7 +81,7 @@ export default function HomeScreen() {
 
   return (
     <LinearGradient colors={[colors.background, colors.backgroundGlow, colors.background]} style={styles.gradient}>
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <ScreenSafeArea style={styles.safeArea} edges={['top', 'left', 'right']}>
         <ScrollView
           contentContainerStyle={[
             styles.scroll,
@@ -122,7 +122,7 @@ export default function HomeScreen() {
             <HomeStatusBar scale={scale} dense={dense} />
           </CardErrorBoundary>
         </ScrollView>
-      </SafeAreaView>
+      </ScreenSafeArea>
     </LinearGradient>
   );
 }

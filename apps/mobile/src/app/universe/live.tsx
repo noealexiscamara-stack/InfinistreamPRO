@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import type { ChannelCategory, GroupedChannel } from '@infiny-stream/types';
@@ -58,7 +58,7 @@ export default function LiveUniverseScreen() {
   const numColumns = useMemo(() => (width >= 900 ? 2 : 1), [width]);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <ScreenSafeArea style={styles.safeArea}>
       <UniverseHeader title="TV en direct" />
 
       {categories.length > 0 && (
@@ -110,7 +110,7 @@ export default function LiveUniverseScreen() {
           }}
         />
       )}
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useVideoPlayer, VideoView, type VideoPlayerStatus } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
@@ -199,7 +199,7 @@ export default function PlayerScreen() {
   const showVideo = !isRadio;
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+    <ScreenSafeArea style={styles.safeArea}>
       <Pressable style={styles.videoWrap} onPress={() => setControlsVisible((v) => !v)}>
         {showVideo ? (
           <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls={false} />
@@ -284,7 +284,7 @@ export default function PlayerScreen() {
           </View>
         )}
       </Pressable>
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 

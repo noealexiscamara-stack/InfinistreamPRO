@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { FlatList, StyleSheet, Text } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { router, useFocusEffect } from 'expo-router';
 import type { GroupedChannel } from '@infiny-stream/types';
 import { colors, spacing, typography } from '@/theme/tokens';
@@ -25,7 +25,7 @@ export default function FavoritesScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <ScreenSafeArea style={styles.safeArea} edges={['top', 'left', 'right']}>
       <Text style={styles.title}>Favoris</Text>
 
       {groups.length === 0 ? (
@@ -51,7 +51,7 @@ export default function FavoritesScreen() {
           }}
         />
       )}
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 

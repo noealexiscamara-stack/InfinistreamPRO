@@ -1,5 +1,5 @@
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -32,7 +32,7 @@ export default function SettingsScreen() {
   const version = Constants.expoConfig?.version ?? '0.1.0';
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <ScreenSafeArea style={styles.safeArea} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Réglages</Text>
 
@@ -78,7 +78,7 @@ export default function SettingsScreen() {
         </Text>
         <Text style={styles.buildSha}>build {getBuildGitShaShort()}</Text>
       </ScrollView>
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 
