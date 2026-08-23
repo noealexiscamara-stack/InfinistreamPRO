@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
-import { useVideoPlayer, VideoView, type VideoPlayerStatus } from 'expo-video';
+import { useVideoPlayer, type VideoPlayerStatus } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
 import type { Channel, GroupedChannel } from '@infiny-stream/types';
 import { colors, networkQualityColor, radius, spacing, typography } from '@/theme/tokens';
 import { getChannelById, getChannels } from '@/services/channelsRepository';
@@ -21,8 +23,19 @@ import {
   extractPlayerError,
   usePlaybackDiagnosticsStore,
 } from '@/store/usePlaybackDiagnosticsStore';
+import {
+  nextPlayerAspectMode,
+  playerAspectModeLabel,
+} from '@/services/playback/playerAspectRatio';
+import { usePlayerAspectStore } from '@/store/usePlayerAspectStore';
+import { useImmersivePlayback } from '@/hooks/useImmersivePlayback';
+import { PlayerVideoSurface } from '@/components/player/PlayerVideoSurface';
+import { PlayerChannelPicker } from '@/components/player/PlayerChannelPicker';
 
 type PlayerScreenState = 'loading' | 'playing' | 'reconnecting' | 'error';
+
+const CONTROLS_HIDE_MS = 5000;
+const ASPECT_HINT_MS = 1600;
 
 export default function PlayerScreen() {
   const { channelId: rawChannelId } = useLocalSearchParams<{ channelId: string }>();
@@ -33,8 +46,12 @@ export default function PlayerScreen() {
   const [siblings, setSiblings] = useState<GroupedChannel[]>([]);
   const [screenState, setScreenState] = useState<PlayerScreenState>('loading');
   const [controlsVisible, setControlsVisible] = useState(true);
+  const [channelListVisible, setChannelListVisible] = useState(false);
+  const [aspectHint, setAspectHint] = useState<string | null>(null);
 
   const qualityMode = useSettingsStore((s) => s.qualityMode);
+  const aspectMode = usePlayerAspectStore((s) => s.aspectMode);
+  const setAspectMode = usePlayerAspectStore((s) => s.setAspectMode);
   const networkState = useNetworkState();
   const playbackHeight = usePlaybackQualityStore((s) => s.height);
   const setPlaybackHeight = usePlaybackQualityStore((s) => s.setHeight);
@@ -54,9 +71,75 @@ export default function PlayerScreen() {
     controllerRef.current = new PlayerController(player);
   }
 
+  const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const aspectHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const insets = useSafeAreaInsets();
+  const isRadio = channel?.kind === 'radio';
+  const showVideo = !isRadio;
+  const chromeVisible = controlsVisible || channelListVisible;
+
+  /** Video is edge-to-edge; chrome (controls / error actions) stays inside safe margins. */
+  const chromeInsets = {
+    paddingTop: Math.max(insets.top, spacing.sm) + spacing.sm,
+    paddingBottom: Math.max(insets.bottom, spacing.sm) + spacing.sm,
+    paddingLeft: Math.max(insets.left, spacing.sm) + spacing.md,
+    paddingRight: Math.max(insets.right, spacing.sm) + spacing.md,
+  };
+
+  useImmersivePlayback(showVideo && screenState !== 'error', chromeVisible);
+
+  const channelNumber = (group?.sortIndex ?? channel?.sortIndex ?? 0) + 1;
+  const channelTitle = group?.name ?? channel?.name ?? activeRadio?.name ?? '';
+
+  const showAspectHint = useCallback((label: string) => {
+    setAspectHint(label);
+    if (aspectHintTimer.current) clearTimeout(aspectHintTimer.current);
+    aspectHintTimer.current = setTimeout(() => setAspectHint(null), ASPECT_HINT_MS);
+  }, []);
+
+  const cycleAspectMode = useCallback(() => {
+    const next = nextPlayerAspectMode(aspectMode);
+    setAspectMode(next);
+    showAspectHint(playerAspectModeLabel(next));
+    setControlsVisible(true);
+  }, [aspectMode, setAspectMode, showAspectHint]);
+
+  const scheduleHideControls = useCallback(() => {
+    if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
+    if (channelListVisible || screenState !== 'playing' || isRadio) return;
+    hideControlsTimer.current = setTimeout(() => {
+      setControlsVisible(false);
+    }, CONTROLS_HIDE_MS);
+  }, [channelListVisible, screenState, isRadio]);
+
+  const revealControls = useCallback(() => {
+    setControlsVisible(true);
+    scheduleHideControls();
+  }, [scheduleHideControls]);
+
+  const toggleControls = useCallback(() => {
+    setControlsVisible((visible) => {
+      const next = !visible;
+      if (next) scheduleHideControls();
+      else if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
+      return next;
+    });
+  }, [scheduleHideControls]);
+
+  useEffect(() => {
+    if (controlsVisible && screenState === 'playing' && !channelListVisible && !isRadio) {
+      scheduleHideControls();
+    }
+    return () => {
+      if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
+    };
+  }, [controlsVisible, screenState, channelListVisible, isRadio, scheduleHideControls]);
+
   useEffect(() => {
     return () => {
       clearPlaybackQuality();
+      if (aspectHintTimer.current) clearTimeout(aspectHintTimer.current);
       controllerRef.current?.dispose();
       controllerRef.current = null;
     };
@@ -73,6 +156,8 @@ export default function PlayerScreen() {
       setChannel(null);
       setGroup(null);
       setSiblings([]);
+      setControlsVisible(true);
+      setChannelListVisible(false);
 
       const ch = await getChannelById(channelId);
       if (cancelled) return;
@@ -190,6 +275,7 @@ export default function PlayerScreen() {
         setLastErrorSummary(
           [extracted.code, extracted.message].filter(Boolean).join(' — ') || 'Erreur lecteur'
         );
+        setControlsVisible(true);
 
         void controller?.handlePlaybackError('source');
       }
@@ -218,11 +304,12 @@ export default function PlayerScreen() {
     [siblings, currentIndex]
   );
 
+  const selectChannelFromList = useCallback((item: GroupedChannel) => {
+    setChannelListVisible(false);
+    router.replace(`/player/${item.tiers[0].channel.id}`);
+  }, []);
+
   function handleBack() {
-    if (channel?.kind === 'radio') {
-      router.back();
-      return;
-    }
     router.back();
   }
 
@@ -236,14 +323,44 @@ export default function PlayerScreen() {
     controllerRef.current.loadChannel(streamUrl).then(() => setScreenState('playing'));
   }
 
-  const isRadio = channel?.kind === 'radio';
-  const showVideo = !isRadio;
+  const singleTapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .numberOfTaps(1)
+        .onEnd(() => {
+          runOnJS(toggleControls)();
+        }),
+    [toggleControls]
+  );
+
+  const doubleTapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .numberOfTaps(2)
+        .onEnd(() => {
+          runOnJS(cycleAspectMode)();
+        }),
+    [cycleAspectMode]
+  );
+
+  const centerTapGesture = useMemo(
+    () => Gesture.Exclusive(doubleTapGesture, singleTapGesture),
+    [doubleTapGesture, singleTapGesture]
+  );
 
   return (
-    <ScreenSafeArea style={styles.safeArea}>
-      <Pressable style={styles.videoWrap} onPress={() => setControlsVisible((v) => !v)}>
+    <View style={styles.root}>
+      <View style={styles.videoWrap}>
         {showVideo ? (
-          <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls={false} />
+          <>
+            <PlayerVideoSurface player={player} aspectMode={aspectMode} />
+            <GestureDetector gesture={singleTapGesture}>
+              <View style={styles.tapLayer} />
+            </GestureDetector>
+            <GestureDetector gesture={centerTapGesture}>
+              <View style={styles.centerTapZone} />
+            </GestureDetector>
+          </>
         ) : (
           <View style={styles.radioBackdrop}>
             <Ionicons name="radio" size={72} color={colors.cyan} />
@@ -252,8 +369,14 @@ export default function PlayerScreen() {
           </View>
         )}
 
+        {!!aspectHint && (
+          <View style={styles.aspectHint} pointerEvents="none">
+            <Text style={styles.aspectHintText}>{aspectHint}</Text>
+          </View>
+        )}
+
         {screenState === 'error' && (
-          <View style={styles.overlay}>
+          <View style={[styles.overlay, chromeInsets]}>
             <Ionicons name="alert-circle-outline" size={40} color={colors.danger} />
             <Text style={styles.overlayTitle}>Impossible de lire cette chaîne.</Text>
             {!!lastErrorSummary && (
@@ -279,21 +402,26 @@ export default function PlayerScreen() {
         )}
 
         {(screenState === 'loading' || screenState === 'reconnecting') && !isRadio && (
-          <View style={styles.overlay}>
+          <View style={[styles.overlay, chromeInsets]}>
             <Text style={styles.overlayTitle}>{screenState === 'reconnecting' ? 'Reconnexion…' : 'Chargement…'}</Text>
           </View>
         )}
 
         {controlsVisible && screenState !== 'error' && (
-          <View style={styles.controls} pointerEvents="box-none">
+          <View style={[styles.controls, chromeInsets]} pointerEvents="box-none">
             <View style={styles.topBar}>
               <Pressable onPress={handleBack} hitSlop={12}>
                 <Ionicons name="chevron-down" size={26} color={colors.textPrimary} />
               </Pressable>
               <View style={styles.channelInfo}>
-                <Text style={styles.channelName} numberOfLines={1}>
-                  {group?.name ?? channel?.name ?? activeRadio?.name}
-                </Text>
+                <View style={styles.titleRow}>
+                  {!!channelTitle && (
+                    <Text style={styles.channelNumber}>{channelNumber}</Text>
+                  )}
+                  <Text style={styles.channelName} numberOfLines={1}>
+                    {channelTitle}
+                  </Text>
+                </View>
                 {!isRadio && (
                   <View style={styles.networkRow}>
                     <View
@@ -306,7 +434,13 @@ export default function PlayerScreen() {
                 )}
               </View>
               {channel && (
-                <Pressable onPress={() => toggleFavorite(channel.id, channel.sourceId)} hitSlop={12}>
+                <Pressable
+                  onPress={() => {
+                    toggleFavorite(channel.id, channel.sourceId);
+                    revealControls();
+                  }}
+                  hitSlop={12}
+                >
                   <Ionicons
                     name={isFavorite(channel.id) ? 'heart' : 'heart-outline'}
                     size={24}
@@ -318,34 +452,120 @@ export default function PlayerScreen() {
 
             {!isRadio && (
               <View style={styles.bottomBar}>
-                <Pressable style={styles.controlButton} onPress={() => goToSibling(-1)} hitSlop={12}>
-                  <Ionicons name="play-skip-back" size={26} color={colors.textPrimary} />
+                <Pressable
+                  style={styles.controlButton}
+                  onPress={() => {
+                    goToSibling(-1);
+                    revealControls();
+                  }}
+                  hitSlop={12}
+                  disabled={siblings.length === 0}
+                >
+                  <Ionicons
+                    name="play-skip-back"
+                    size={26}
+                    color={siblings.length === 0 ? colors.textTertiary : colors.textPrimary}
+                  />
                 </Pressable>
+
                 <Pressable
                   style={styles.playButton}
-                  onPress={() => (player.playing ? player.pause() : player.play())}
+                  onPress={() => {
+                    if (player.playing) player.pause();
+                    else player.play();
+                    revealControls();
+                  }}
                   hitSlop={12}
                 >
                   <Ionicons name={player.playing ? 'pause' : 'play'} size={30} color={colors.textPrimary} />
                 </Pressable>
-                <Pressable style={styles.controlButton} onPress={() => goToSibling(1)} hitSlop={12}>
-                  <Ionicons name="play-skip-forward" size={26} color={colors.textPrimary} />
+
+                <Pressable
+                  style={styles.controlButton}
+                  onPress={() => {
+                    goToSibling(1);
+                    revealControls();
+                  }}
+                  hitSlop={12}
+                  disabled={siblings.length === 0}
+                >
+                  <Ionicons
+                    name="play-skip-forward"
+                    size={26}
+                    color={siblings.length === 0 ? colors.textTertiary : colors.textPrimary}
+                  />
                 </Pressable>
+
+                <View style={styles.bottomActions}>
+                  <Pressable
+                    style={styles.iconAction}
+                    onPress={() => cycleAspectMode()}
+                    hitSlop={12}
+                    accessibilityLabel="Cadrage de l'image"
+                  >
+                    <Ionicons name="scan-outline" size={22} color={colors.textPrimary} />
+                    <Text style={styles.iconActionLabel}>{playerAspectModeLabel(aspectMode)}</Text>
+                  </Pressable>
+
+                  {siblings.length > 0 && (
+                    <Pressable
+                      style={styles.iconAction}
+                      onPress={() => {
+                        setChannelListVisible(true);
+                        revealControls();
+                      }}
+                      hitSlop={12}
+                      accessibilityLabel="Liste des chaînes"
+                    >
+                      <Ionicons name="list" size={22} color={colors.textPrimary} />
+                      <Text style={styles.iconActionLabel}>Liste</Text>
+                    </Pressable>
+                  )}
+                </View>
               </View>
             )}
           </View>
         )}
-      </Pressable>
-    </ScreenSafeArea>
+      </View>
+
+      <PlayerChannelPicker
+        visible={channelListVisible}
+        channels={siblings}
+        activeChannelId={channel?.id}
+        onClose={() => {
+          setChannelListVisible(false);
+          revealControls();
+        }}
+        onSelect={selectChannelFromList}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#000' },
+  root: { flex: 1, backgroundColor: '#000' },
   videoWrap: { flex: 1, backgroundColor: '#000' },
+  tapLayer: StyleSheet.absoluteFill,
+  centerTapZone: {
+    position: 'absolute',
+    width: '50%',
+    height: '50%',
+    top: '25%',
+    left: '25%',
+  },
   radioBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.xl },
   radioTitle: { ...typography.title, color: colors.textPrimary, textAlign: 'center' },
   radioHint: { ...typography.body, color: colors.textSecondary, textAlign: 'center' },
+  aspectHint: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: '45%',
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+  },
+  aspectHintText: { ...typography.headline, color: colors.textPrimary },
   overlay: {
     position: 'absolute',
     top: 0,
@@ -376,15 +596,27 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     justifyContent: 'space-between',
-    padding: spacing.lg,
+    backgroundColor: 'rgba(0,0,0,0.28)',
   },
   topBar: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   channelInfo: { flex: 1 },
-  channelName: { ...typography.headline, color: colors.textPrimary },
+  titleRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
+  channelNumber: {
+    ...typography.headline,
+    color: colors.brand,
+    fontVariant: ['tabular-nums'],
+    minWidth: 28,
+  },
+  channelName: { ...typography.headline, color: colors.textPrimary, flex: 1 },
   networkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 2 },
   dot: { width: 6, height: 6, borderRadius: 3 },
   networkText: { ...typography.caption, color: colors.textSecondary },
-  bottomBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xxl },
+  bottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.lg,
+  },
   controlButton: { padding: spacing.sm },
   playButton: {
     width: 64,
@@ -393,5 +625,22 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  bottomActions: {
+    position: 'absolute',
+    right: spacing.lg,
+    bottom: 0,
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  iconAction: {
+    alignItems: 'center',
+    gap: 2,
+    minWidth: 52,
+  },
+  iconActionLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontSize: 10,
   },
 });

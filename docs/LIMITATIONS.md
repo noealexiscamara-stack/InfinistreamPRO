@@ -32,6 +32,20 @@ mais **rien ici n'a pu être exécuté sur un appareil ou un émulateur** :
 Android Studio local) puis test manuel sur un appareil bas de gamme réel avec un flux IPTV légitime, en suivant la
 matrice de tests réseau du cahier des charges (Wi-Fi excellent/moyen/faible, 3G/4G divers, perte/latence).
 
+## 1b. Lecteur — plein écran immersif NON VÉRIFIÉ SUR APPAREIL
+
+Le lecteur occupe tout l'écran pour la **vidéo** (pas de `ScreenSafeArea` sur la surface).
+Les **contrôles** (retour, favori, barre du bas) appliquent `useSafeAreaInsets` — image
+bord à bord, commandes dans les marges sûres.
+
+Masquage des barres système via `expo-status-bar` + `expo-navigation-bar`
+(`NavigationBar.setHidden` / `setVisibilityAsync`) : **appelé**, mais **pas confirmé
+visuellement** depuis cet environnement (pas d'appareil). Sur Android 15+ le mode
+bord-à-bord est imposé et ces API peuvent être inopérantes selon l'OEM / la config
+Expo — un appel sans erreur ne prouve pas que la barre a disparu. À valider sur
+appareil réel : contrôles masqués → la barre de navigation Android doit disparaître
+vraiment ; sinon documenter l'échec et ne pas prétendre au plein écran immersif.
+
 ## 2. ABR natif ExoPlayer — plafond qualité non exposé par expo-video
 
 `PlayerController` passe le **manifeste HLS maître** à `expo-video` / Media3. L'adaptation de débit est faite
