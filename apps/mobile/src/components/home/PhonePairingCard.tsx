@@ -22,16 +22,18 @@ export function PhonePairingCard({ scale = 1, dense = false }: PhonePairingCardP
   const qrSize = Math.round((dense ? 88 : 120) * scale);
 
   return (
-    <GlassCard style={[styles.card, elevation.cardSubtle, elevation.cardGlow('rgba(78,196,255,0.25)')]}>
+    <GlassCard style={[styles.card, elevation.cardSubtle, elevation.cardGlow('rgba(78,196,255,0.25)'), { flex: 1, padding: Math.round(spacing.md * scale) }]}>
       <View style={styles.header}>
-        <View style={styles.headerIcon}>
-          <Ionicons name="phone-portrait-outline" size={20} color={colors.cyan} />
+        <View style={[styles.headerIcon, dense && styles.headerIconDense]}>
+          <Ionicons name="phone-portrait-outline" size={dense ? 16 : 20} color={colors.cyan} />
         </View>
         <View style={styles.headerCopy}>
-          <Text style={styles.kicker}>Configurer avec votre téléphone</Text>
-          <Text style={styles.lede} numberOfLines={dense ? 2 : 3}>
-            Scannez le QR code pour ajouter votre IPTV, créer votre compte ou activer Premium.
-          </Text>
+          <Text style={[styles.kicker, dense && { fontSize: 10 }]}>Configurer avec votre téléphone</Text>
+          {!dense && (
+            <Text style={styles.lede} numberOfLines={3}>
+              Scannez le QR code pour ajouter votre IPTV, créer votre compte ou activer Premium.
+            </Text>
+          )}
         </View>
       </View>
 
@@ -82,6 +84,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerIconDense: { width: 28, height: 28 },
   headerCopy: { flex: 1, gap: 2 },
   kicker: { ...typography.label, color: colors.cyan },
   lede: { ...typography.caption, color: colors.textSecondary },

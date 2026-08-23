@@ -1,19 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from 'react-native';
-import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import type { ContentKind } from '@infiny-stream/types';
 import { colors, elevation, spacing, typography } from '@/theme/tokens';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { CardErrorBoundary } from '@/components/ui/CardErrorBoundary';
+import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { HomeHeader } from '@/components/home/HomeHeader';
 import { WelcomeTitle } from '@/components/home/WelcomeTitle';
 import { AddIptvCard } from '@/components/home/AddIptvCard';
@@ -26,13 +21,20 @@ import { useFavoritesStore } from '@/store/useFavoritesStore';
 import { useHistoryStore } from '@/store/useHistoryStore';
 import { getKindCounts } from '@/services/channelsRepository';
 
-/** Reference width for the TV mockup; phone landscape scales down from this. */
 const LAYOUT_REF_WIDTH = 960;
+/** Target content stack height in landscape — scale down when the viewport is shorter. */
+const LAYOUT_REF_HEIGHT = 400;
+const TAB_BAR_HEIGHT = 52;
 
 export default function HomeScreen() {
   const { width, height } = useWindowDimensions();
-  const scale = useMemo(() => Math.min(1, Math.max(0.72, width / LAYOUT_REF_WIDTH)), [width]);
-  const dense = height < 500;
+  const insets = useSafeAreaInsets();
+
+  const availableHeight = height - insets.top - TAB_BAR_HEIGHT - insets.bottom;
+  const widthScale = Math.min(1, Math.max(0.72, width / LAYOUT_REF_WIDTH));
+  const heightScale = Math.min(1, Math.max(0.62, availableHeight / LAYOUT_REF_HEIGHT));
+  const scale = Math.min(widthScale, heightScale);
+  const dense = availableHeight < 380;
 
   const sources = useSourcesStore((s) => s.sources);
   const loadSources = useSourcesStore((s) => s.load);
@@ -79,35 +81,36 @@ export default function HomeScreen() {
     favoriteCount,
   });
 
+  const gap = Math.round((dense ? spacing.sm : spacing.md) * scale);
+  const padH = Math.round((dense ? spacing.md : spacing.lg) * scale);
+  const padV = Math.round((dense ? spacing.xs : spacing.sm) * scale);
+
   return (
     <LinearGradient colors={[colors.background, colors.backgroundGlow, colors.background]} style={styles.gradient}>
       <ScreenSafeArea style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <ScrollView
-          contentContainerStyle={[
-            styles.scroll,
-            dense && styles.scrollDense,
-            { gap: dense ? spacing.md : spacing.lg * scale },
-          ]}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.cyan} />}
-        >
+        <View style={[styles.page, { paddingHorizontal: padH, paddingVertical: padV, gap }]}>
           <CardErrorBoundary name="header">
             <HomeHeader scale={scale} />
           </CardErrorBoundary>
 
-          <CardErrorBoundary name="welcome">
-            <WelcomeTitle scale={scale} />
-          </CardErrorBoundary>
+          {!dense && (
+            <CardErrorBoundary name="welcome">
+              <WelcomeTitle scale={scale} />
+            </CardErrorBoundary>
+          )}
 
           <CardErrorBoundary name="hero-cards">
-            <View style={styles.cardsRow}>
+            <View style={[styles.cardsRow, { flex: 1, minHeight: 0, gap }]}>
               {!hasSources ? (
                 <AddIptvCard scale={scale} />
               ) : continueWatching ? (
-                <ContinueWatchingCard entry={continueWatching} />
+                <ContinueWatchingCard entry={continueWatching} scale={scale} dense={dense} />
               ) : (
-                <GlassCard style={[styles.emptyContinue, elevation.cardSubtle]}>
-                  <Text style={styles.emptyTitle}>Rien à reprendre pour le moment</Text>
-                  <Text style={styles.emptyBody}>Lancez une chaîne pour la retrouver ici ensuite.</Text>
+                <GlassCard style={[styles.emptyContinue, elevation.cardSubtle, { flex: 1 }]}>
+                  <Text style={[styles.emptyTitle, { fontSize: Math.round(16 * scale) }]}>Rien à reprendre</Text>
+                  <Text style={[styles.emptyBody, { fontSize: Math.round(13 * scale) }]}>
+                    Lancez une chaîne pour la retrouver ici.
+                  </Text>
                 </GlassCard>
               )}
               <PhonePairingCard scale={scale} dense={dense} />
@@ -121,7 +124,12 @@ export default function HomeScreen() {
           <CardErrorBoundary name="status-bar">
             <HomeStatusBar scale={scale} dense={dense} />
           </CardErrorBoundary>
-        </ScrollView>
+
+          <Pressable onPress={() => void onRefresh()} style={styles.refreshHint} hitSlop={8}>
+            <Ionicons name={refreshing ? 'sync' : 'refresh-outline'} size={14} color={colors.textTertiary} />
+            <Text style={styles.refreshLabel}>{refreshing ? 'Actualisation…' : 'Actualiser'}</Text>
+          </Pressable>
+        </View>
       </ScreenSafeArea>
     </LinearGradient>
   );
@@ -130,22 +138,23 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   gradient: { flex: 1 },
   safeArea: { flex: 1, backgroundColor: 'transparent' },
-  scroll: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
-  },
-  scrollDense: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+  page: {
+    flex: 1,
+    justifyContent: 'space-between',
   },
   cardsRow: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    gap: spacing.md,
   },
-  emptyContinue: { gap: spacing.sm, borderColor: colors.borderStrong, flex: 1 },
+  emptyContinue: { gap: spacing.sm, borderColor: colors.borderStrong, justifyContent: 'center' },
   emptyTitle: { ...typography.headline, color: colors.textPrimary },
   emptyBody: { ...typography.body, color: colors.textSecondary },
+  refreshHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    opacity: 0.7,
+  },
+  refreshLabel: { ...typography.caption, color: colors.textTertiary },
 });

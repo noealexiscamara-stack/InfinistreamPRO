@@ -8,28 +8,31 @@ import { GlassCard } from '@/components/ui/GlassCard';
 
 interface ContinueWatchingCardProps {
   entry: HistoryEntry;
+  scale?: number;
+  dense?: boolean;
 }
 
-export function ContinueWatchingCard({ entry }: ContinueWatchingCardProps) {
+export function ContinueWatchingCard({ entry, scale = 1, dense = false }: ContinueWatchingCardProps) {
+  const logoSize = Math.round((dense ? 44 : 56) * scale);
   return (
-    <GlassCard style={[styles.card, elevation.cardSubtle]}>
-      <Text style={styles.kicker}>Continuer à regarder</Text>
+    <GlassCard style={[styles.card, elevation.cardSubtle, { flex: 1, padding: Math.round(spacing.md * scale) }]}>
+      {!dense && <Text style={styles.kicker}>Continuer à regarder</Text>}
       <Pressable onPress={() => router.push(`/player/${entry.channelId}`)} style={styles.row}>
-        <View style={styles.logoWrap}>
+        <View style={[styles.logoWrap, { width: logoSize, height: logoSize }]}>
           {entry.logoUrl ? (
-            <Image source={{ uri: entry.logoUrl }} style={styles.logo} contentFit="contain" cachePolicy="disk" transition={0} />
+            <Image source={{ uri: entry.logoUrl }} style={{ width: logoSize - 8, height: logoSize - 8 }} contentFit="contain" cachePolicy="disk" transition={0} />
           ) : (
-            <Ionicons name="tv-outline" size={28} color={colors.cyan} />
+            <Ionicons name="tv-outline" size={Math.round(logoSize * 0.45)} color={colors.cyan} />
           )}
         </View>
         <View style={styles.copy}>
-          <Text style={styles.resume}>Reprendre</Text>
-          <Text numberOfLines={2} style={styles.title}>
+          {!dense && <Text style={styles.resume}>Reprendre</Text>}
+          <Text numberOfLines={dense ? 1 : 2} style={[styles.title, { fontSize: Math.round((dense ? 14 : 17) * scale) }]}>
             {entry.channelName}
           </Text>
         </View>
-        <View style={styles.play}>
-          <Ionicons name="play" size={18} color={colors.background} />
+        <View style={[styles.play, { width: Math.round(40 * scale), height: Math.round(40 * scale) }]}>
+          <Ionicons name="play" size={Math.round(16 * scale)} color={colors.background} />
         </View>
       </Pressable>
     </GlassCard>
@@ -37,19 +40,16 @@ export function ContinueWatchingCard({ entry }: ContinueWatchingCardProps) {
 }
 
 const styles = StyleSheet.create({
-  card: { gap: spacing.md, borderColor: colors.borderStrong, flex: 1 },
+  card: { gap: spacing.sm, borderColor: colors.borderStrong },
   kicker: { ...typography.label, color: colors.cyan },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   logoWrap: {
-    width: 64,
-    height: 64,
     borderRadius: radius.md,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  logo: { width: 56, height: 56 },
   copy: { flex: 1, gap: 2 },
   resume: { ...typography.label, color: colors.cyan },
   title: { ...typography.headline, color: colors.textPrimary },
