@@ -1,8 +1,8 @@
 import type * as SQLite from 'expo-sqlite';
-import { classifyEntry } from '@infiny-stream/shared';
+import { classifyEntry, classifyM3uEntry } from '@infiny-stream/shared';
 
 /** Bump when adding a new incremental migration below. */
-export const LATEST_SCHEMA_VERSION = 2;
+export const LATEST_SCHEMA_VERSION = 3;
 
 export interface MigrationRunOptions {
   /** Test hook — simulates the app being killed mid-backfill. */
@@ -168,6 +168,38 @@ export async function migrateV2_metadataAndCache(db: MigrationDb): Promise<void>
   `);
 }
 
+/** v2 → v3 : reclassify M3U channels as live (audio → radio); Xtream untouched. */
+export async function migrateV3_reclassifyM3uKinds(db: MigrationDb): Promise<void> {
+  const rows = await db.getAllAsync<{
+    id: string;
+    name: string;
+    streamUrl: string;
+    groupTitle: string | null;
+    category: string | null;
+  }>(`
+    SELECT c.id, c.name, c.streamUrl, c.groupTitle, c.category
+    FROM channels c
+    INNER JOIN sources s ON s.id = c.sourceId
+    WHERE s.type IN ('m3u_url', 'm3u_file')
+  `);
+
+  if (rows.length === 0) return;
+
+  const statement = await db.prepareAsync(`UPDATE channels SET kind = $kind WHERE id = $id`);
+  try {
+    for (const row of rows) {
+      const kind = classifyM3uEntry({
+        name: row.name,
+        streamUrl: row.streamUrl,
+        groupTitle: row.groupTitle ?? row.category ?? undefined,
+      });
+      await statement.executeAsync({ $id: row.id, $kind: kind });
+    }
+  } finally {
+    await statement.finalizeAsync();
+  }
+}
+
 async function runMigrationStep(
   db: MigrationDb,
   targetVersion: number,
@@ -190,6 +222,11 @@ export async function runSchemaMigrations(db: MigrationDb, options?: MigrationRu
   if (version < 2) {
     await runMigrationStep(db, 2, () => migrateV2_metadataAndCache(db));
     version = 2;
+  }
+
+  if (version < 3) {
+    await runMigrationStep(db, 3, () => migrateV3_reclassifyM3uKinds(db));
+    version = 3;
   }
 
   if (version > LATEST_SCHEMA_VERSION) {

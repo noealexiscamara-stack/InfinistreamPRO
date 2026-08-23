@@ -1,5 +1,6 @@
-import { channelId, classifyEntry, dedupeChannelsByUrl, groupChannelsByQuality } from '@infiny-stream/shared';
+import { channelId, classifyEntry, classifyM3uEntry, dedupeChannelsByUrl, groupChannelsByQuality } from '@infiny-stream/shared';
 import type { Channel, ContentKind } from '@infiny-stream/types';
+import type { Source } from '@infiny-stream/types';
 import { getDatabase } from '@/utils/db';
 import type { PersistableChannel } from '@/services/xtream/mapXtreamCatalog';
 
@@ -16,16 +17,22 @@ export function formatImportSummary(imported: number, ignored: number): string {
   return `${imported} chaînes importées`;
 }
 
-function withKind(channels: PersistableChannel[]): Array<PersistableChannel & { kind: ContentKind }> {
-  return channels.map((ch) => ({ ...ch, kind: ch.kind ?? classifyEntry(ch) }));
+function withKind(
+  channels: PersistableChannel[],
+  sourceType?: Source['type']
+): Array<PersistableChannel & { kind: ContentKind }> {
+  const classify =
+    sourceType === 'm3u_url' || sourceType === 'm3u_file' ? classifyM3uEntry : classifyEntry;
+  return channels.map((ch) => ({ ...ch, kind: ch.kind ?? classify(ch) }));
 }
 
 export async function replaceSourceChannels(
   sourceId: string,
-  channels: PersistableChannel[]
+  channels: PersistableChannel[],
+  options?: { sourceType?: Source['type'] }
 ): Promise<PersistChannelsResult> {
   const { channels: unique, duplicatesRemoved } = dedupeChannelsByUrl(channels);
-  const tagged = withKind(unique);
+  const tagged = withKind(unique, options?.sourceType);
 
   const asChannels: Channel[] = tagged.map((ch) => ({
     id: channelId(sourceId, ch.streamUrl),

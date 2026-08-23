@@ -103,7 +103,7 @@ export async function importXtreamSource(source: XtreamSource): Promise<XtreamIm
     series: seriesResult,
   });
 
-  const persisted = await replaceSourceChannels(source.id, built.channels);
+  const persisted = await replaceSourceChannels(source.id, built.channels, { sourceType: 'xtream' });
   const ignored = persisted.duplicatesRemoved + persisted.rejected;
 
   return {

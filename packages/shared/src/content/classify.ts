@@ -40,6 +40,17 @@ function extensionOf(streamUrl: string): string {
   return dot >= 0 ? last.slice(dot) : '';
 }
 
+/**
+ * M3U-only rule (Smarters-aligned): every entry is live TV; group-title is
+ * display-only. Audio file extensions are the sole exception (→ radio).
+ * Used by the M3U importer and v3 migration — never infers VOD from URL path.
+ */
+export function classifyM3uEntry(entry: ClassifiableEntry): ContentKind {
+  const ext = extensionOf(entry.streamUrl);
+  if (AUDIO_EXTENSIONS.includes(ext)) return 'radio';
+  return 'live';
+}
+
 /** True when the stream URL carries an Xtream-style path segment (/live/, /movie/, …). */
 export function hasXtreamPathSegment(streamUrl: string): boolean {
   const segments = pathSegments(streamUrl);

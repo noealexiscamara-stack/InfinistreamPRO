@@ -182,6 +182,35 @@ class MemoryMigrationDb implements MigrationDb {
       })) as T[];
     }
 
+    if (
+      sql.includes('FROM channels c') &&
+      sql.includes('INNER JOIN sources s') &&
+      sql.includes("s.type IN ('m3u_url', 'm3u_file')")
+    ) {
+      const m3uSourceIds = new Set(
+        (this.rows.get('sources') ?? [])
+          .filter((row) => row.type === 'm3u_url' || row.type === 'm3u_file')
+          .map((row) => row.id)
+      );
+      return (this.rows.get('channels') ?? [])
+        .filter((row) => m3uSourceIds.has(row.sourceId))
+        .map((row) => ({
+          id: row.id,
+          name: row.name,
+          streamUrl: row.streamUrl,
+          groupTitle: row.groupTitle,
+          category: row.category,
+        })) as T[];
+    }
+
+    if (sql.startsWith('SELECT id, kind, sourceId FROM channels')) {
+      return (this.rows.get('channels') ?? []).map((row) => ({
+        id: row.id,
+        kind: row.kind,
+        sourceId: row.sourceId,
+      })) as T[];
+    }
+
     if (sql.startsWith('SELECT id, name FROM sources')) {
       return (this.rows.get('sources') ?? []) as T[];
     }
@@ -264,6 +293,39 @@ async function seedManyChannels(db: MemoryMigrationDb, count: number): Promise<v
   }
 }
 
+async function seedV2MisclassifiedM3u(db: MemoryMigrationDb): Promise<void> {
+  await db.execAsync(`ALTER TABLE channels ADD COLUMN kind TEXT`);
+  await db.execAsync(`
+    INSERT INTO sources (id, type, name, payload, createdAt, updatedAt, channelCount)
+    VALUES ('m3u1', 'm3u_url', 'Playlist live', 'payload', '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z', 3)
+  `);
+  await db.execAsync(`
+    INSERT INTO sources (id, type, name, payload, createdAt, updatedAt, channelCount)
+    VALUES ('x1', 'xtream', 'Xtream', 'payload', '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z', 2)
+  `);
+  await db.execAsync(`
+    INSERT INTO channels (id, sourceId, name, streamUrl, sortIndex, category, kind)
+    VALUES ('m1', 'm3u1', 'Canal+ Cinéma', 'http://cdn.example.com/canal.m3u8', 0, '🎬 CINEMA & FILMS', 'movie')
+  `);
+  await db.execAsync(`
+    INSERT INTO channels (id, sourceId, name, streamUrl, sortIndex, category, kind)
+    VALUES ('m2', 'm3u1', 'Serie Max', 'http://cdn.example.com/serie.m3u8', 1, '📺 SÉRIES', 'series')
+  `);
+  await db.execAsync(`
+    INSERT INTO channels (id, sourceId, name, streamUrl, sortIndex, category, kind)
+    VALUES ('m3', 'm3u1', 'RFI', 'http://cdn.example.com/rfi.mp3', 2, '🎵 MUSIQUE', 'radio')
+  `);
+  await db.execAsync(`
+    INSERT INTO channels (id, sourceId, name, streamUrl, sortIndex, category, kind)
+    VALUES ('x1', 'x1', 'Le Parrain', 'http://p:8080/movie/u/p/2.mkv', 0, 'Films', 'movie')
+  `);
+  await db.execAsync(`
+    INSERT INTO channels (id, sourceId, name, streamUrl, sortIndex, category, kind)
+    VALUES ('x2', 'x1', 'Breaking Bad S01E01', 'http://p:8080/series/u/p/3.mkv', 1, 'Series', 'series')
+  `);
+  await db.execAsync(`PRAGMA user_version = 2`);
+}
+
 describe('SQLite schema migrations', () => {
   it('upgrades a v0 database without losing sources, favorites or history', async () => {
     const db = new MemoryMigrationDb();
@@ -274,7 +336,7 @@ describe('SQLite schema migrations', () => {
 
     await runSchemaMigrations(db);
 
-    expect(await getSchemaVersion(db)).toBe(2);
+    expect(await getSchemaVersion(db)).toBe(3);
     expect(await columnExists(db, 'channels', 'kind')).toBe(true);
     expect(await columnExists(db, 'channels', 'containerExtension')).toBe(true);
 
@@ -293,7 +355,7 @@ describe('SQLite schema migrations', () => {
     );
     expect(channels).toHaveLength(2);
     expect(channels[0].kind).toBe('live');
-    expect(channels[1].kind).toBe('movie');
+    expect(channels[1].kind).toBe('live');
   });
 
   it('is idempotent when migrations run twice', async () => {
@@ -303,7 +365,7 @@ describe('SQLite schema migrations', () => {
     await runSchemaMigrations(db);
     await runSchemaMigrations(db);
 
-    expect(await getSchemaVersion(db)).toBe(2);
+    expect(await getSchemaVersion(db)).toBe(3);
     expect(await db.getFirstAsync(`SELECT COUNT(*) as count FROM channels`)).toEqual({ count: 2 });
   });
 
@@ -321,10 +383,31 @@ describe('SQLite schema migrations', () => {
 
     await runSchemaMigrations(db);
 
-    expect(await getSchemaVersion(db)).toBe(2);
+    expect(await getSchemaVersion(db)).toBe(3);
     expect(await columnExists(db, 'channels', 'kind')).toBe(true);
     const channels = await db.getAllAsync<{ id: string; kind: string }>(`SELECT id, kind FROM channels`);
     expect(channels).toHaveLength(4);
     expect(channels.every((row) => row.kind === 'live')).toBe(true);
+  });
+
+  it('v3 reclassifies mis-tagged M3U channels to live without touching Xtream', async () => {
+    const db = new MemoryMigrationDb();
+    await seedV2MisclassifiedM3u(db);
+
+    expect(await getSchemaVersion(db)).toBe(2);
+
+    await runSchemaMigrations(db);
+
+    expect(await getSchemaVersion(db)).toBe(3);
+
+    const channels = await db.getAllAsync<{ id: string; kind: string; sourceId: string }>(
+      `SELECT id, kind, sourceId FROM channels`
+    );
+
+    expect(channels.find((c) => c.id === 'm1')?.kind).toBe('live');
+    expect(channels.find((c) => c.id === 'm2')?.kind).toBe('live');
+    expect(channels.find((c) => c.id === 'm3')?.kind).toBe('radio');
+    expect(channels.find((c) => c.id === 'x1')?.kind).toBe('movie');
+    expect(channels.find((c) => c.id === 'x2')?.kind).toBe('series');
   });
 });

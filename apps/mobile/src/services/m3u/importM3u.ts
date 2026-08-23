@@ -112,7 +112,7 @@ export async function importM3uSource(
   }
 
   onProgress?.({ phase: 'saving' });
-  const persisted = await replaceSourceChannels(source.id, parsed.channels);
+  const persisted = await replaceSourceChannels(source.id, parsed.channels, { sourceType: source.type });
   const ignored = persisted.duplicatesRemoved + persisted.rejected;
 
   return {

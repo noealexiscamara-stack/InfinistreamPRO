@@ -1,4 +1,4 @@
-import { classifyEntries, classifyEntry, parseEpisodeMarker, stripEpisodeMarker } from '../classify';
+import { classifyEntries, classifyEntry, classifyM3uEntry, parseEpisodeMarker, stripEpisodeMarker } from '../classify';
 
 const e = (name: string, streamUrl: string, groupTitle?: string) => ({ name, streamUrl, groupTitle });
 
@@ -26,6 +26,14 @@ describe('classifyEntry — M3U: everything live except audio', () => {
   it('classifies audio extensions as radio', () => {
     expect(classifyEntry(e('RFI', 'http://x/stream.mp3', 'FRANCE'))).toBe('radio');
     expect(classifyEntry(e('Africa Radio', 'http://x/s.aac'))).toBe('radio');
+  });
+});
+
+describe('classifyM3uEntry — M3U importer rule', () => {
+  it('always returns live except for audio extensions', () => {
+    expect(classifyM3uEntry(e('Canal+ Cinéma', 'http://x/canal.m3u8', '🎬 CINEMA & FILMS'))).toBe('live');
+    expect(classifyM3uEntry(e('Inception', 'http://example.com/movie/inception.mkv', 'Films'))).toBe('live');
+    expect(classifyM3uEntry(e('RFI', 'http://x/rfi.mp3'))).toBe('radio');
   });
 });
 
