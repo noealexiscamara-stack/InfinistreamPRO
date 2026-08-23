@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ChannelCategory, GroupedChannel } from '@infiny-stream/types';
 import { colors, spacing, typography } from '@/theme/tokens';
 import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
@@ -13,11 +14,13 @@ import { groupedFromChannels, groupFavoriteChannel } from '@/services/channelGro
 import { useSourcesStore } from '@/store/useSourcesStore';
 
 const PAGE_SIZE = 10000;
-const MIN_TILE_WIDTH = 132;
+/** Fixed 6 columns in landscape phone — requirement vs Smarters density. */
+const TARGET_COLUMNS = 6;
 
 export default function LiveUniverseScreen() {
   const sources = useSourcesStore((s) => s.sources);
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   const [categories, setCategories] = useState<ChannelCategory[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
@@ -27,9 +30,13 @@ export default function LiveUniverseScreen() {
 
   const primarySourceId = sources[0]?.id;
 
-  const sidebarWidth = useMemo(() => Math.min(280, Math.max(200, width * 0.3)), [width]);
-  const gridWidth = Math.max(200, width - sidebarWidth);
-  const numColumns = useMemo(() => Math.max(3, Math.floor(gridWidth / MIN_TILE_WIDTH)), [gridWidth]);
+  const contentWidth = Math.max(200, width - insets.left - insets.right);
+  const sidebarWidth = useMemo(
+    () => Math.min(240, Math.max(168, contentWidth * 0.26)),
+    [contentWidth]
+  );
+  const gridWidth = Math.max(160, contentWidth - sidebarWidth);
+  const numColumns = TARGET_COLUMNS;
   const tileWidth = gridWidth / numColumns;
 
   const selectedCategoryName = useMemo(() => {
@@ -78,6 +85,7 @@ export default function LiveUniverseScreen() {
           selectedId={selectedCategoryId}
           onSelect={setSelectedCategoryId}
           totalCount={totalLiveCount}
+          width={sidebarWidth}
         />
 
         <View style={styles.main}>
@@ -101,8 +109,8 @@ export default function LiveUniverseScreen() {
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.grid}
               columnWrapperStyle={numColumns > 1 ? styles.gridRow : undefined}
-              initialNumToRender={24}
-              maxToRenderPerBatch={24}
+              initialNumToRender={36}
+              maxToRenderPerBatch={36}
               windowSize={7}
               removeClippedSubviews
               renderItem={({ item }) => {
@@ -126,12 +134,12 @@ export default function LiveUniverseScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
   shell: { flex: 1, flexDirection: 'row' },
-  main: { flex: 1 },
+  main: { flex: 1, minWidth: 0 },
   gridHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     gap: spacing.sm,
@@ -139,6 +147,6 @@ const styles = StyleSheet.create({
   back: { padding: spacing.xs },
   gridTitle: { ...typography.headline, color: colors.textPrimary, flex: 1, textAlign: 'center' },
   headerSpacer: { width: 30 },
-  grid: { padding: spacing.sm, paddingBottom: spacing.xl },
+  grid: { paddingHorizontal: spacing.xs, paddingBottom: spacing.lg },
   gridRow: { gap: 0 },
 });

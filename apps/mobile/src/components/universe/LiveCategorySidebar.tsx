@@ -15,9 +15,16 @@ interface LiveCategorySidebarProps {
   selectedId: string;
   onSelect: (id: string) => void;
   totalCount: number;
+  width?: number;
 }
 
-export function LiveCategorySidebar({ categories, selectedId, onSelect, totalCount }: LiveCategorySidebarProps) {
+export function LiveCategorySidebar({
+  categories,
+  selectedId,
+  onSelect,
+  totalCount,
+  width,
+}: LiveCategorySidebarProps) {
   const [query, setQuery] = useState('');
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -31,7 +38,7 @@ export function LiveCategorySidebar({ categories, selectedId, onSelect, totalCou
   );
 
   return (
-    <View style={styles.sidebar}>
+    <View style={[styles.sidebar, width != null ? { width, minWidth: width, maxWidth: width } : null]}>
       <View style={styles.searchWrap}>
         <Ionicons name="search" size={16} color={colors.textTertiary} />
         <TextInput
