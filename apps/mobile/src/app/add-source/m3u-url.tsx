@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
+import { FormKeyboardScreen } from '@/components/ui/FormKeyboardScreen';
 import { router } from 'expo-router';
 import { colors, spacing, typography } from '@/theme/tokens';
 import { TextField } from '@/components/ui/TextField';
@@ -44,37 +45,40 @@ export default function AddM3uUrlScreen() {
 
   return (
     <ScreenSafeArea style={styles.safeArea}>
-      <Text style={styles.title}>URL M3U</Text>
-      <Text style={styles.subtitle}>Collez le lien de votre playlist M3U.</Text>
+      <FormKeyboardScreen contentContainerStyle={styles.scrollContent}>
+        <Text style={styles.title}>URL M3U</Text>
+        <Text style={styles.subtitle}>Collez le lien de votre playlist M3U.</Text>
 
-      <View style={styles.form}>
-        <TextField label="Nom (optionnel)" placeholder="Ma TV" value={name} onChangeText={setName} editable={!isLoading} />
-        <TextField
-          label="URL de la playlist"
-          placeholder="https://…"
-          value={url}
-          onChangeText={(value) => {
-            setUrl(value);
-            if (error) setError(null);
-          }}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          editable={!isLoading}
-        />
-      </View>
+        <View style={styles.form}>
+          <TextField label="Nom (optionnel)" placeholder="Ma TV" value={name} onChangeText={setName} editable={!isLoading} />
+          <TextField
+            label="URL de la playlist"
+            placeholder="https://…"
+            value={url}
+            onChangeText={(value) => {
+              setUrl(value);
+              if (error) setError(null);
+            }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            editable={!isLoading}
+          />
+        </View>
 
-      {error && <ImportErrorBanner error={error} onRetry={handleSubmit} retryDisabled={isLoading || !canSubmit} />}
+        {error && <ImportErrorBanner error={error} onRetry={handleSubmit} retryDisabled={isLoading || !canSubmit} />}
 
-      {isLoading && <Text style={styles.progress}>{progressLabel(progress)}</Text>}
+        {isLoading && <Text style={styles.progress}>{progressLabel(progress)}</Text>}
 
-      <Button label="Ajouter" onPress={handleSubmit} disabled={!canSubmit} loading={isLoading} />
+        <Button label="Ajouter" onPress={handleSubmit} disabled={!canSubmit} loading={isLoading} />
+      </FormKeyboardScreen>
     </ScreenSafeArea>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.background, paddingHorizontal: spacing.xl, paddingTop: spacing.xl, gap: spacing.lg },
+  safeArea: { flex: 1, backgroundColor: colors.background, paddingHorizontal: spacing.xl },
+  scrollContent: { paddingTop: spacing.xl, gap: spacing.lg },
   title: { ...typography.title, color: colors.textPrimary },
   subtitle: { ...typography.body, color: colors.textSecondary },
   form: { gap: spacing.md },

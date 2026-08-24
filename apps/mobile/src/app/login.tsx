@@ -45,8 +45,8 @@ export default function LoginScreen() {
   return (
     <LinearGradient colors={[colors.background, '#131726']} style={styles.container}>
       <ScreenSafeArea style={styles.safeArea}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
+          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
             <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}>
               <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
             </Pressable>

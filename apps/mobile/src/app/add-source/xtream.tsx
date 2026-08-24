@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
+import { FormKeyboardScreen } from '@/components/ui/FormKeyboardScreen';
 import { router } from 'expo-router';
 import { colors, spacing, typography } from '@/theme/tokens';
 import { TextField } from '@/components/ui/TextField';
@@ -37,44 +38,47 @@ export default function AddXtreamScreen() {
 
   return (
     <ScreenSafeArea style={styles.safeArea}>
-      <Text style={styles.title}>Connexion Xtream</Text>
-      <Text style={styles.subtitle}>Renseignez les identifiants fournis par votre fournisseur Xtream Codes.</Text>
+      <FormKeyboardScreen contentContainerStyle={styles.scrollContent}>
+        <Text style={styles.title}>Connexion Xtream</Text>
+        <Text style={styles.subtitle}>Renseignez les identifiants fournis par votre fournisseur Xtream Codes.</Text>
 
-      <View style={styles.form}>
-        <TextField label="Nom (optionnel)" placeholder="Mon abonnement" value={name} onChangeText={setName} editable={!isLoading} />
-        <TextField
-          label="URL du serveur"
-          placeholder="http://serveur.exemple.com:8080"
-          value={serverUrl}
-          onChangeText={(value) => {
-            setServerUrl(value);
-            if (error) setError(null);
-          }}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          editable={!isLoading}
-        />
-        <TextField
-          label="Nom d'utilisateur"
-          value={username}
-          onChangeText={setUsername}
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={!isLoading}
-        />
-        <TextField label="Mot de passe" value={password} onChangeText={setPassword} secureTextEntry editable={!isLoading} />
-      </View>
+        <View style={styles.form}>
+          <TextField label="Nom (optionnel)" placeholder="Mon abonnement" value={name} onChangeText={setName} editable={!isLoading} />
+          <TextField
+            label="URL du serveur"
+            placeholder="http://serveur.exemple.com:8080"
+            value={serverUrl}
+            onChangeText={(value) => {
+              setServerUrl(value);
+              if (error) setError(null);
+            }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            editable={!isLoading}
+          />
+          <TextField
+            label="Nom d'utilisateur"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!isLoading}
+          />
+          <TextField label="Mot de passe" value={password} onChangeText={setPassword} secureTextEntry editable={!isLoading} />
+        </View>
 
-      {error && <ImportErrorBanner error={error} onRetry={handleSubmit} retryDisabled={isLoading || !canSubmit} />}
+        {error && <ImportErrorBanner error={error} onRetry={handleSubmit} retryDisabled={isLoading || !canSubmit} />}
 
-      <Button label="Se connecter" onPress={handleSubmit} disabled={!canSubmit} loading={isLoading} />
+        <Button label="Se connecter" onPress={handleSubmit} disabled={!canSubmit} loading={isLoading} />
+      </FormKeyboardScreen>
     </ScreenSafeArea>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.background, paddingHorizontal: spacing.xl, paddingTop: spacing.xl, gap: spacing.lg },
+  safeArea: { flex: 1, backgroundColor: colors.background, paddingHorizontal: spacing.xl },
+  scrollContent: { paddingTop: spacing.xl, gap: spacing.lg },
   title: { ...typography.title, color: colors.textPrimary },
   subtitle: { ...typography.body, color: colors.textSecondary },
   form: { gap: spacing.md },
