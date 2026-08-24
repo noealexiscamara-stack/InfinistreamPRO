@@ -27,7 +27,8 @@ infiny-stream/
   docs/
     ARCHITECTURE.md    Décisions techniques et pourquoi
     LIMITATIONS.md     Ce qui n'est pas fait / pas testable dans cet environnement
-    GUIDE_BUILD.md     Comment compiler mobile + backend
+    BUILD_LOCAL.md     APK Android local (keystore EAS) + émulateur
+    GUIDE_BUILD.md     Packages, backend, EAS cloud
     GUIDE_DEPLOIEMENT.md  Comment déployer le backend et publier l'app
     GUIDE_VPS.md       Pas-à-pas déploiement sur un VPS (Docker + Nginx + Let's Encrypt)
 ```
