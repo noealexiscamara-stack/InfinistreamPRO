@@ -3,6 +3,15 @@ import type { XtreamSource } from '@infiny-stream/types';
 import { formatImportSummary, replaceSourceChannels } from '@/services/persistChannels';
 import { buildXtreamChannelsFromFetch } from '@/services/xtream/mapXtreamCatalog';
 
+export type XtreamImportStep = 'live' | 'vod' | 'series';
+
+export interface XtreamImportProgress {
+  phase: 'connecting' | 'fetching' | 'mapping' | 'saving';
+  step: XtreamImportStep;
+  processedCount?: number;
+  totalCount?: number;
+}
+
 export interface XtreamImportResult {
   channelCount: number;
   duplicatesRemoved: number;
@@ -70,9 +79,14 @@ export async function verifyXtreamCredentials(
   return result.data;
 }
 
-export async function importXtreamSource(source: XtreamSource): Promise<XtreamImportResult> {
+export async function importXtreamSource(
+  source: XtreamSource,
+  onProgress?: (progress: XtreamImportProgress) => void,
+  options?: { auth?: XtreamAuthInfo }
+): Promise<XtreamImportResult> {
   const client = clientFor(source);
-  const auth = await verifyXtreamCredentials(source);
+  onProgress?.({ phase: 'connecting', step: 'live' });
+  const auth = options?.auth ?? (await verifyXtreamCredentials(source));
 
   const [liveCategories, vodCategories, seriesCategories] = await Promise.all([
     client.getLiveCategories(),
@@ -89,21 +103,35 @@ export async function importXtreamSource(source: XtreamSource): Promise<XtreamIm
     }
   }
 
-  const [liveResult, vodResult, seriesResult] = await Promise.all([
-    client.getLiveStreams(),
-    client.getVodStreams(),
-    client.getSeries(),
-  ]);
-
+  onProgress?.({ phase: 'fetching', step: 'live' });
+  const liveResult = await client.getLiveStreams();
   if (!liveResult.ok) throw new XtreamConnectionError(liveResult.error, liveResult.message);
+
+  onProgress?.({
+    phase: 'fetching',
+    step: 'vod',
+    processedCount: liveResult.data.length,
+  });
+  const vodResult = await client.getVodStreams();
+
+  onProgress?.({
+    phase: 'fetching',
+    step: 'series',
+    processedCount: liveResult.data.length + (vodResult.ok ? vodResult.data.length : 0),
+  });
+  const seriesResult = await client.getSeries();
 
   const built = buildXtreamChannelsFromFetch(source.id, client, categoryNameById, {
     live: liveResult,
     vod: vodResult,
     series: seriesResult,
-  });
+  }, onProgress);
 
-  const persisted = await replaceSourceChannels(source.id, built.channels, { sourceType: 'xtream' });
+  const persisted = await replaceSourceChannels(source.id, built.channels, {
+    sourceType: 'xtream',
+    onProgress: (processedCount, totalCount) =>
+      onProgress?.({ phase: 'saving', step: 'series', processedCount, totalCount }),
+  });
   const ignored = persisted.duplicatesRemoved + persisted.rejected;
 
   return {

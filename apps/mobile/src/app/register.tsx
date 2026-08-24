@@ -9,6 +9,7 @@ import { colors, spacing, typography } from '@/theme/tokens';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { FORM_MAX_WIDTH } from '@/components/ui/FormKeyboardScreen';
 import { useAuthStore } from '@/store/useAuthStore';
 import { friendlyAuthError } from '@/utils/authErrors';
 
@@ -51,52 +52,58 @@ export default function RegisterScreen() {
     <LinearGradient colors={[colors.background, '#131726']} style={styles.container}>
       <ScreenSafeArea style={styles.safeArea}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
-            <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}>
-              <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
-            </Pressable>
+          <ScrollView
+            contentContainerStyle={styles.scrollOuter}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
+            <View style={styles.formColumn}>
+              <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}>
+                <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
+              </Pressable>
 
-            <View style={styles.brand}>
-              <Text style={styles.appName}>{APP_NAME}</Text>
-              <Text style={styles.subtitle}>Créez votre compte — l'essai Premium démarre immédiatement.</Text>
+              <View style={styles.brand}>
+                <Text style={styles.appName}>{APP_NAME}</Text>
+                <Text style={styles.subtitle}>Créez votre compte — l'essai Premium démarre immédiatement.</Text>
+              </View>
+
+              <GlassCard style={styles.form}>
+                <TextField
+                  label="Nom (optionnel)"
+                  value={name}
+                  onChangeText={setName}
+                  autoCapitalize="words"
+                  placeholder="Votre prénom"
+                />
+                <TextField
+                  label="Email"
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  keyboardType="email-address"
+                  textContentType="emailAddress"
+                  placeholder="vous@exemple.com"
+                />
+                <TextField
+                  label="Mot de passe"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                  autoComplete="new-password"
+                  textContentType="newPassword"
+                  placeholder="8 caractères minimum"
+                />
+                {!!error && <Text style={styles.error}>{error}</Text>}
+                <Button label="Créer mon compte" onPress={handleSubmit} loading={isLoading} />
+              </GlassCard>
+
+              <Pressable onPress={() => router.push('/login')} style={styles.linkRow}>
+                <Text style={styles.linkText}>
+                  Déjà un compte ? <Text style={styles.linkBold}>Se connecter</Text>
+                </Text>
+              </Pressable>
             </View>
-
-            <GlassCard style={styles.form}>
-              <TextField
-                label="Nom (optionnel)"
-                value={name}
-                onChangeText={setName}
-                autoCapitalize="words"
-                placeholder="Votre prénom"
-              />
-              <TextField
-                label="Email"
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                autoComplete="email"
-                keyboardType="email-address"
-                textContentType="emailAddress"
-                placeholder="vous@exemple.com"
-              />
-              <TextField
-                label="Mot de passe"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                autoComplete="new-password"
-                textContentType="newPassword"
-                placeholder="8 caractères minimum"
-              />
-              {!!error && <Text style={styles.error}>{error}</Text>}
-              <Button label="Créer mon compte" onPress={handleSubmit} loading={isLoading} />
-            </GlassCard>
-
-            <Pressable onPress={() => router.push('/login')} style={styles.linkRow}>
-              <Text style={styles.linkText}>
-                Déjà un compte ? <Text style={styles.linkBold}>Se connecter</Text>
-              </Text>
-            </Pressable>
           </ScrollView>
         </KeyboardAvoidingView>
       </ScreenSafeArea>
@@ -108,7 +115,8 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
   flex: { flex: 1 },
-  content: { padding: spacing.xl, gap: spacing.lg },
+  scrollOuter: { flexGrow: 1, alignItems: 'center', padding: spacing.xl, paddingBottom: spacing.xxl },
+  formColumn: { width: '100%', maxWidth: FORM_MAX_WIDTH, gap: spacing.lg },
   back: { alignSelf: 'flex-start' },
   brand: { gap: spacing.sm, marginTop: spacing.md },
   appName: { ...typography.title, color: colors.textPrimary },

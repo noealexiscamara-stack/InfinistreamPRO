@@ -1,19 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { ChannelCategory, GroupedChannel } from '@infiny-stream/types';
+import type { Channel, ChannelCategory, GroupedChannel } from '@infiny-stream/types';
 import { colors, spacing, typography } from '@/theme/tokens';
 import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ChannelGridTile } from '@/components/universe/ChannelGridTile';
 import { LiveCategorySidebar, categoriesToSidebarItems } from '@/components/universe/LiveCategorySidebar';
-import { getCategories, getAllChannelsByKind, getChannels } from '@/services/channelsRepository';
+import { getCategories, getAllChannelsByKind, getChannels, countChannels } from '@/services/channelsRepository';
 import { groupedFromChannels, groupFavoriteChannel } from '@/services/channelGroups';
 import { useSourcesStore } from '@/store/useSourcesStore';
 
-const PAGE_SIZE = 10000;
+const PAGE_SIZE = 120;
 /** Fixed 6 columns in landscape phone — requirement vs Smarters density. */
 const TARGET_COLUMNS = 6;
 
@@ -24,9 +24,13 @@ export default function LiveUniverseScreen() {
 
   const [categories, setCategories] = useState<ChannelCategory[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
+  const [rawChannels, setRawChannels] = useState<Channel[]>([]);
   const [channels, setChannels] = useState<GroupedChannel[]>([]);
   const [totalLiveCount, setTotalLiveCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const loadedCountRef = useRef(0);
 
   const primarySourceId = sources[0]?.id;
 
@@ -54,26 +58,61 @@ export default function LiveUniverseScreen() {
     getCategories(primarySourceId, 'live').then(setCategories);
   }, [primarySourceId]);
 
-  const reload = useCallback(async () => {
+  const fetchRows = useCallback(
+    async (offset: number) => {
+      if (primarySourceId && selectedCategoryName) {
+        return getChannels(primarySourceId, {
+          kind: 'live',
+          category: selectedCategoryName,
+          limit: PAGE_SIZE,
+          offset,
+        });
+      }
+      return getAllChannelsByKind('live', PAGE_SIZE, offset);
+    },
+    [primarySourceId, selectedCategoryName]
+  );
+
+  const loadInitial = useCallback(async () => {
     setLoading(true);
     try {
-      let rows;
-      if (primarySourceId && selectedCategoryName) {
-        rows = await getChannels(primarySourceId, { kind: 'live', category: selectedCategoryName, limit: PAGE_SIZE });
-      } else {
-        rows = await getAllChannelsByKind('live', PAGE_SIZE);
+      const rows = await fetchRows(0);
+      loadedCountRef.current = rows.length;
+      setRawChannels(rows);
+      setChannels(groupedFromChannels(rows));
+      setHasMore(rows.length === PAGE_SIZE);
+      if (!selectedCategoryName) {
+        setTotalLiveCount(await countChannels({ kind: 'live', sourceId: primarySourceId }));
       }
-      const grouped = groupedFromChannels(rows);
-      setChannels(grouped);
-      if (!selectedCategoryName) setTotalLiveCount(grouped.length);
     } finally {
       setLoading(false);
     }
-  }, [primarySourceId, selectedCategoryName]);
+  }, [fetchRows, primarySourceId, selectedCategoryName]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const rows = await fetchRows(loadedCountRef.current);
+      loadedCountRef.current += rows.length;
+      setRawChannels((prev) => {
+        const merged = [...prev, ...rows];
+        setChannels(groupedFromChannels(merged));
+        return merged;
+      });
+      setHasMore(rows.length === PAGE_SIZE);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [fetchRows, hasMore, loadingMore]);
 
   useEffect(() => {
-    reload();
-  }, [reload]);
+    loadedCountRef.current = 0;
+    setRawChannels([]);
+    setChannels([]);
+    setHasMore(false);
+    void loadInitial();
+  }, [loadInitial]);
 
   const sidebarItems = useMemo(() => categoriesToSidebarItems(categories), [categories]);
 
@@ -113,6 +152,15 @@ export default function LiveUniverseScreen() {
               maxToRenderPerBatch={36}
               windowSize={7}
               removeClippedSubviews
+              onEndReached={() => {
+                void loadMore();
+              }}
+              onEndReachedThreshold={0.4}
+              ListFooterComponent={
+                loadingMore ? (
+                  <Text style={styles.loadingMore}>Chargement…</Text>
+                ) : null
+              }
               renderItem={({ item }) => {
                 const target = groupFavoriteChannel(item);
                 return (
@@ -149,4 +197,5 @@ const styles = StyleSheet.create({
   headerSpacer: { width: 30 },
   grid: { paddingHorizontal: spacing.xs, paddingBottom: spacing.lg },
   gridRow: { gap: 0 },
+  loadingMore: { ...typography.caption, color: colors.textTertiary, textAlign: 'center', paddingVertical: spacing.md },
 });

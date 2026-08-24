@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import type { ContentKind } from '@infiny-stream/types';
 import { colors, elevation, spacing, typography } from '@/theme/tokens';
 import { GlassCard } from '@/components/ui/GlassCard';
@@ -37,7 +36,6 @@ export default function HomeScreen() {
 
   const sources = useSourcesStore((s) => s.sources);
   const loadSources = useSourcesStore((s) => s.load);
-  const refreshSource = useSourcesStore((s) => s.refreshSource);
   const loadHistory = useHistoryStore((s) => s.load);
   const entries = useHistoryStore((s) => s.entries);
   const favoriteCount = useFavoritesStore((s) => s.favoriteIds.size);
@@ -47,8 +45,6 @@ export default function HomeScreen() {
     series: 0,
     radio: 0,
   });
-  const [refreshing, setRefreshing] = useState(false);
-
   const hasSources = sources.length > 0;
   const continueWatching = entries[0];
 
@@ -65,13 +61,6 @@ export default function HomeScreen() {
   useEffect(() => {
     loadSources();
   }, [loadSources]);
-
-  async function onRefresh() {
-    setRefreshing(true);
-    await Promise.all(sources.map((s) => refreshSource(s.id).catch(() => undefined)));
-    await reload();
-    setRefreshing(false);
-  }
 
   const quickItems = buildDefaultQuickFunctions({
     liveCount: kindCounts.live,
@@ -123,11 +112,6 @@ export default function HomeScreen() {
           <CardErrorBoundary name="status-bar">
             <HomeStatusBar scale={scale} dense={dense} />
           </CardErrorBoundary>
-
-          <Pressable onPress={() => void onRefresh()} style={styles.refreshHint} hitSlop={8}>
-            <Ionicons name={refreshing ? 'sync' : 'refresh-outline'} size={14} color={colors.textTertiary} />
-            <Text style={styles.refreshLabel}>{refreshing ? 'Actualisation…' : 'Actualiser'}</Text>
-          </Pressable>
         </View>
       </ScreenSafeArea>
     </LinearGradient>
@@ -148,12 +132,4 @@ const styles = StyleSheet.create({
   emptyContinue: { gap: spacing.sm, borderColor: colors.borderStrong, justifyContent: 'center' },
   emptyTitle: { ...typography.headline, color: colors.textPrimary },
   emptyBody: { ...typography.body, color: colors.textSecondary },
-  refreshHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    opacity: 0.7,
-  },
-  refreshLabel: { ...typography.caption, color: colors.textTertiary },
 });

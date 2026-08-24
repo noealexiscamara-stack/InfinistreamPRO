@@ -5,6 +5,7 @@ import {
   mapXtreamVodStreams,
   type PersistableChannel,
 } from '@/services/xtream/mapXtreamCatalog';
+import type { XtreamLiveStream, XtreamSeries, XtreamVodStream } from '@infiny-stream/shared';
 
 const client = {
   buildLiveStreamUrl: (id: number) => `http://example.com/live/u/p/${id}.m3u8`,
@@ -135,6 +136,50 @@ describe('buildXtreamChannelsFromFetch', () => {
         series: { ok: true, data: [] },
       })
     ).toThrow('offline');
+  });
+
+  it('maps a 50k-entry Xtream catalog without blowing the call stack', () => {
+    const liveCount = 20_000;
+    const vodCount = 15_000;
+    const seriesCount = 15_000;
+
+    const live: XtreamLiveStream[] = Array.from({ length: liveCount }, (_, i) => ({
+      streamId: i + 1,
+      name: `Live ${i + 1}`,
+      categoryId: '9',
+    }));
+
+    const vod: XtreamVodStream[] = Array.from({ length: vodCount }, (_, i) => ({
+      streamId: liveCount + i + 1,
+      name: `Movie ${i + 1}`,
+      categoryId: '1',
+      containerExtension: 'mp4',
+    }));
+
+    const series: XtreamSeries[] = Array.from({ length: seriesCount }, (_, i) => ({
+      seriesId: i + 1,
+      name: `Series ${i + 1}`,
+      categoryId: '2',
+    }));
+
+    const result = buildXtreamChannelsFromFetch('src-large', client, categories, {
+      live: { ok: true, data: live },
+      vod: { ok: true, data: vod },
+      series: { ok: true, data: series },
+    });
+
+    expect(result.channels).toHaveLength(liveCount + vodCount + seriesCount);
+    expect(result.channels[0]).toMatchObject({ kind: 'live', name: 'Live 1' });
+
+    const firstMovie = result.channels[liveCount] as PersistableChannel;
+    expect(firstMovie).toMatchObject({ kind: 'movie', name: 'Movie 1' });
+
+    const firstSeries = result.channels[liveCount + vodCount] as PersistableChannel;
+    expect(firstSeries).toMatchObject({
+      kind: 'series',
+      name: 'Series 1',
+      streamUrl: 'infiny-stream://xtream/series/src-large/1',
+    });
   });
 });
 

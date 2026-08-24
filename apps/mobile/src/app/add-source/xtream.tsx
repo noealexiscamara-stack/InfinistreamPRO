@@ -10,6 +10,8 @@ import { ImportErrorBanner } from '@/components/ui/ImportErrorBanner';
 import { useSourcesStore } from '@/store/useSourcesStore';
 import { describeImportError, type FriendlyImportErrorInfo } from '@/utils/friendlyErrors';
 import { presentImportSummary } from '@/utils/presentImportSummary';
+import type { XtreamImportProgress } from '@/services/xtream/importXtream';
+import { xtreamImportProgressLabel } from '@/utils/xtreamImportProgress';
 
 export default function AddXtreamScreen() {
   const [name, setName] = useState('');
@@ -17,22 +19,29 @@ export default function AddXtreamScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<FriendlyImportErrorInfo | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [progress, setProgress] = useState<XtreamImportProgress | null>(null);
   const addXtream = useSourcesStore((s) => s.addXtream);
 
+  const isLoading = progress !== null;
   const canSubmit = serverUrl.trim().length > 0 && username.trim().length > 0 && password.length > 0;
 
   async function handleSubmit() {
-    if (!canSubmit) return;
+    if (!canSubmit || isLoading) return;
     setError(null);
-    setIsLoading(true);
+    setProgress({ phase: 'connecting', step: 'live' });
     try {
-      const result = await addXtream(name.trim() || 'Xtream', serverUrl.trim(), username.trim(), password);
+      const result = await addXtream(
+        name.trim() || 'Xtream',
+        serverUrl.trim(),
+        username.trim(),
+        password,
+        setProgress
+      );
       presentImportSummary(result.summary, () => router.replace('/(tabs)/home'));
     } catch (err) {
       setError(describeImportError(err, { url: serverUrl.trim() }));
     } finally {
-      setIsLoading(false);
+      setProgress(null);
     }
   }
 
@@ -70,7 +79,9 @@ export default function AddXtreamScreen() {
 
         {error && <ImportErrorBanner error={error} onRetry={handleSubmit} retryDisabled={isLoading || !canSubmit} />}
 
-        <Button label="Se connecter" onPress={handleSubmit} disabled={!canSubmit} loading={isLoading} />
+        {isLoading && progress && <Text style={styles.progress}>{xtreamImportProgressLabel(progress)}</Text>}
+
+        <Button label="Se connecter" onPress={handleSubmit} disabled={!canSubmit || isLoading} loading={isLoading} />
       </FormKeyboardScreen>
     </ScreenSafeArea>
   );
@@ -82,4 +93,5 @@ const styles = StyleSheet.create({
   title: { ...typography.title, color: colors.textPrimary },
   subtitle: { ...typography.body, color: colors.textSecondary },
   form: { gap: spacing.md },
+  progress: { ...typography.caption, color: colors.brand, textAlign: 'center' },
 });

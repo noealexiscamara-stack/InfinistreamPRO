@@ -17,3 +17,4 @@ export * from './universes/classify';
 export * from './universes/series';
 export * from './network/userAgent';
 export * from './utils/id';
+export * from './utils/arrayBatch';

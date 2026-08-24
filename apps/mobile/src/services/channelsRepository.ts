@@ -1,13 +1,61 @@
 import type { Channel, ChannelCategory, ContentKind } from '@infiny-stream/types';
-import { groupEpisodesIntoSeries } from '@infiny-stream/shared';
 import { getDatabase } from '@/utils/db';
-import { isXtreamSeriesPlaceholder } from '@/services/persistChannels';
 
 export interface ChannelQueryOptions {
   category?: string;
   kind?: ContentKind;
   limit?: number;
   offset?: number;
+}
+
+export async function countChannels(
+  options: { sourceId?: string; kind?: ContentKind; category?: string } = {}
+): Promise<number> {
+  const db = await getDatabase();
+  const { sourceId, kind, category } = options;
+
+  if (sourceId && category && kind) {
+    const row = await db.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND category = ? AND kind = ?`,
+      sourceId,
+      category,
+      kind
+    );
+    return row?.count ?? 0;
+  }
+  if (sourceId && category) {
+    const row = await db.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND category = ?`,
+      sourceId,
+      category
+    );
+    return row?.count ?? 0;
+  }
+  if (sourceId && kind) {
+    const row = await db.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND kind = ?`,
+      sourceId,
+      kind
+    );
+    return row?.count ?? 0;
+  }
+  if (sourceId) {
+    const row = await db.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(*) as count FROM channels WHERE sourceId = ?`,
+      sourceId
+    );
+    return row?.count ?? 0;
+  }
+  if (kind) {
+    const row = await db.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(*) as count FROM channels WHERE kind = ?`,
+      kind
+    );
+    return row?.count ?? 0;
+  }
+
+  const row = await db.getFirstAsync<{ count: number }>(`SELECT COUNT(*) as count FROM channels`);
+  return row?.count ?? 0;
 }
 
 export async function getKindCounts(sourceId?: string): Promise<Record<ContentKind, number>> {
@@ -29,14 +77,6 @@ export async function getKindCounts(sourceId?: string): Promise<Record<ContentKi
   empty.movie = await countKind('movie');
   empty.radio = await countKind('radio');
 
-  const m3uSeriesRows = sourceId
-    ? await getChannels(sourceId, { kind: 'series', limit: 50000 })
-    : await getAllChannelsByKind('series', 50000);
-  const m3uCandidates = m3uSeriesRows.filter(
-    (c) => !c.xtreamSeriesId && !c.xtreamEpisodeId && !isXtreamSeriesPlaceholder(c.streamUrl)
-  );
-  const grouped = groupEpisodesIntoSeries(m3uCandidates);
-
   const xtreamHeaderRow = sourceId
     ? await db.getFirstAsync<{ count: number }>(
         `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND kind = 'series' AND xtreamSeriesId IS NOT NULL AND xtreamEpisodeId IS NULL`,
@@ -46,7 +86,16 @@ export async function getKindCounts(sourceId?: string): Promise<Record<ContentKi
         `SELECT COUNT(*) as count FROM channels WHERE kind = 'series' AND xtreamSeriesId IS NOT NULL AND xtreamEpisodeId IS NULL`
       );
 
-  empty.series = grouped.series.length + grouped.unparsed.length + (xtreamHeaderRow?.count ?? 0);
+  const m3uSeriesRow = sourceId
+    ? await db.getFirstAsync<{ count: number }>(
+        `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND kind = 'series' AND xtreamSeriesId IS NULL AND xtreamEpisodeId IS NULL AND streamUrl NOT LIKE 'infiny-stream://%'`,
+        sourceId
+      )
+    : await db.getFirstAsync<{ count: number }>(
+        `SELECT COUNT(*) as count FROM channels WHERE kind = 'series' AND xtreamSeriesId IS NULL AND xtreamEpisodeId IS NULL AND streamUrl NOT LIKE 'infiny-stream://%'`
+      );
+
+  empty.series = (xtreamHeaderRow?.count ?? 0) + (m3uSeriesRow?.count ?? 0);
   return empty;
 }
 
@@ -108,12 +157,13 @@ export async function getChannels(sourceId: string, options: ChannelQueryOptions
   );
 }
 
-export async function getAllChannelsByKind(kind: ContentKind, limit = 10000): Promise<Channel[]> {
+export async function getAllChannelsByKind(kind: ContentKind, limit = 120, offset = 0): Promise<Channel[]> {
   const db = await getDatabase();
   return db.getAllAsync<Channel>(
-    `SELECT * FROM channels WHERE kind = ? ORDER BY sortIndex ASC LIMIT ?`,
+    `SELECT * FROM channels WHERE kind = ? ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
     kind,
-    limit
+    limit,
+    offset
   );
 }
 
@@ -157,11 +207,12 @@ export async function getChannelByXtreamSeriesId(sourceId: string, xtreamSeriesI
   );
 }
 
-export async function getXtreamSeriesCatalog(limit = 5000): Promise<Channel[]> {
+export async function getXtreamSeriesCatalog(limit = 120, offset = 0): Promise<Channel[]> {
   const db = await getDatabase();
   return db.getAllAsync<Channel>(
-    `SELECT * FROM channels WHERE kind = 'series' AND xtreamSeriesId IS NOT NULL AND xtreamEpisodeId IS NULL ORDER BY sortIndex ASC LIMIT ?`,
-    limit
+    `SELECT * FROM channels WHERE kind = 'series' AND xtreamSeriesId IS NOT NULL AND xtreamEpisodeId IS NULL ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
+    limit,
+    offset
   );
 }
 
