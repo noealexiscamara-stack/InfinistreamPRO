@@ -108,12 +108,12 @@ export function buildDefaultQuickFunctions(opts: {
       onPress: () => router.push('/universe/series'),
     },
     {
-      id: 'replay',
-      universeId: 'replay',
-      icon: 'refresh-circle-outline',
-      title: 'Relecture',
-      meta: 'Bientôt',
-      disabled: true,
+      id: 'radios',
+      universeId: 'radios',
+      icon: 'radio-outline',
+      title: 'Radios',
+      meta: 'Écouter',
+      onPress: () => router.push('/universe/radios'),
     },
     {
       id: 'favorites',

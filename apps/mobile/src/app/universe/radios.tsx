@@ -8,7 +8,7 @@ import type { Channel } from '@infiny-stream/types';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { UniverseHeader } from '@/components/universe/UniverseHeader';
-import { getAllChannelsByKind } from '@/services/channelsRepository';
+import { getRadioChannels } from '@/services/channelsRepository';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
 
 export default function RadiosUniverseScreen() {
@@ -17,7 +17,7 @@ export default function RadiosUniverseScreen() {
   const isFavorite = useFavoritesStore((s) => s.isFavorite);
 
   const reload = useCallback(() => {
-    getAllChannelsByKind('radio', 10000).then(setRadios);
+    getRadioChannels(10000).then(setRadios);
   }, []);
 
   useEffect(() => {

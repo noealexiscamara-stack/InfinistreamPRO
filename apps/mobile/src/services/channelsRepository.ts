@@ -307,3 +307,20 @@ export async function getDuplicateMovieTitles(limit = 20): Promise<Array<{ title
 export async function countMovies(): Promise<number> {
   return countChannels({ kind: 'movie' });
 }
+
+/**
+ * Radios: explicit kind=radio, plus live streams whose category_name contains RADIO.
+ */
+export async function getRadioChannels(limit = 10000): Promise<Channel[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<Channel>(
+    `SELECT * FROM channels
+     WHERE kind = 'radio'
+        OR (kind = 'live' AND (
+              UPPER(IFNULL(category, '')) LIKE '%RADIO%'
+           OR UPPER(IFNULL(groupTitle, '')) LIKE '%RADIO%'
+        ))
+     ORDER BY sortIndex ASC LIMIT ?`,
+    limit
+  );
+}
