@@ -5,12 +5,13 @@ import { colors, spacing, typography } from '@/theme/tokens';
 
 interface UniverseHeaderProps {
   title: string;
+  onBack?: () => void;
 }
 
-export function UniverseHeader({ title }: UniverseHeaderProps) {
+export function UniverseHeader({ title, onBack }: UniverseHeaderProps) {
   return (
     <View style={styles.header}>
-      <Pressable onPress={() => router.back()} hitSlop={12}>
+      <Pressable onPress={onBack ?? (() => router.back())} hitSlop={12}>
         <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
       </Pressable>
       <Text style={styles.title} numberOfLines={1}>

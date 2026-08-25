@@ -96,12 +96,21 @@ export async function importXtreamSource(
 
   if (!liveCategories.ok) throw new XtreamConnectionError(liveCategories.error, liveCategories.message);
 
-  const categoryNameById = new Map<string, string>();
-  for (const list of [liveCategories, vodCategories, seriesCategories]) {
-    if (list.ok) {
-      for (const c of list.data) categoryNameById.set(c.categoryId, c.categoryName);
-    }
-  }
+  const toMap = (list: typeof liveCategories): Map<string, string> => {
+    const map = new Map<string, string>();
+    if (list.ok) for (const c of list.data) map.set(c.categoryId, c.categoryName);
+    return map;
+  };
+
+  const categoryMaps = {
+    live: toMap(liveCategories),
+    vod: toMap(vodCategories),
+    series: toMap(seriesCategories),
+  };
+
+  console.log(
+    `[Import] Xtream categories live=${categoryMaps.live.size} vod=${categoryMaps.vod.size} series=${categoryMaps.series.size}`
+  );
 
   onProgress?.({ phase: 'fetching', step: 'live' });
   const liveResult = await client.getLiveStreams();
@@ -121,7 +130,7 @@ export async function importXtreamSource(
   });
   const seriesResult = await client.getSeries();
 
-  const built = buildXtreamChannelsFromFetch(source.id, client, categoryNameById, {
+  const built = buildXtreamChannelsFromFetch(source.id, client, categoryMaps, {
     live: liveResult,
     vod: vodResult,
     series: seriesResult,

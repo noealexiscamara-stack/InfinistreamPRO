@@ -14,6 +14,8 @@ export interface Channel {
   tvgName?: string;
   country?: string;
   category?: string;
+  /** Xtream category_id — kept separate so live/vod/series maps never collide. */
+  xtreamCategoryId?: string;
   /** Order the channel appeared in its source, for stable list rendering. */
   sortIndex: number;
   /** live | movie | series | radio — inferred at import from playlist metadata. */

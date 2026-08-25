@@ -2,7 +2,7 @@ import type * as SQLite from 'expo-sqlite';
 import { classifyEntry, classifyM3uEntry } from '@infiny-stream/shared';
 
 /** Bump when adding a new incremental migration below. */
-export const LATEST_SCHEMA_VERSION = 3;
+export const LATEST_SCHEMA_VERSION = 4;
 
 export interface MigrationRunOptions {
   /** Test hook — simulates the app being killed mid-backfill. */
@@ -200,6 +200,16 @@ export async function migrateV3_reclassifyM3uKinds(db: MigrationDb): Promise<voi
   }
 }
 
+/** v3 → v4 : store Xtream category_id separately from display name. */
+export async function migrateV4_xtreamCategoryId(db: MigrationDb): Promise<void> {
+  if (!(await columnExists(db, 'channels', 'xtreamCategoryId'))) {
+    await db.execAsync(`ALTER TABLE channels ADD COLUMN xtreamCategoryId TEXT`);
+  }
+  await db.execAsync(
+    `CREATE INDEX IF NOT EXISTS idx_channels_xtream_category ON channels(sourceId, kind, xtreamCategoryId)`
+  );
+}
+
 async function runMigrationStep(
   db: MigrationDb,
   targetVersion: number,
@@ -227,6 +237,11 @@ export async function runSchemaMigrations(db: MigrationDb, options?: MigrationRu
   if (version < 3) {
     await runMigrationStep(db, 3, () => migrateV3_reclassifyM3uKinds(db));
     version = 3;
+  }
+
+  if (version < 4) {
+    await runMigrationStep(db, 4, () => migrateV4_xtreamCategoryId(db));
+    version = 4;
   }
 
   if (version > LATEST_SCHEMA_VERSION) {

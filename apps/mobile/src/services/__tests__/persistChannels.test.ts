@@ -53,8 +53,8 @@ class MemoryChannelsDb {
       return;
     }
     if (sql.startsWith('INSERT OR REPLACE INTO channels')) {
-      // Multi-row: 20 columns per row
-      const COLS = 20;
+      // Multi-row: 21 columns per row
+      const COLS = 21;
       for (let i = 0; i + COLS - 1 < params.length; i += COLS) {
         const id = String(params[i]);
         this.channels.set(id, {

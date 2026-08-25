@@ -19,6 +19,12 @@ const categories = new Map([
   ['9', 'Live FR'],
 ]);
 
+const categoryMaps = {
+  live: new Map([['9', 'Live FR']]),
+  vod: new Map([['1', 'FR | Films']]),
+  series: new Map([['2', 'FR | Séries']]),
+};
+
 describe('formatDisplayRating', () => {
   it('hides zero and missing ratings', () => {
     expect(formatDisplayRating(undefined)).toBeNull();
@@ -64,7 +70,7 @@ describe('mapXtreamVodStreams', () => {
 
 describe('buildXtreamChannelsFromFetch', () => {
   it('imports live even when VOD is unavailable', () => {
-    const result = buildXtreamChannelsFromFetch('src1', client, categories, {
+    const result = buildXtreamChannelsFromFetch('src1', client, categoryMaps, {
       live: {
         ok: true,
         data: [{ streamId: 1, name: 'TF1', categoryId: '9', streamIcon: 'http://logo' }],
@@ -80,7 +86,7 @@ describe('buildXtreamChannelsFromFetch', () => {
   });
 
   it('includes movies and series catalog rows when APIs succeed', () => {
-    const result = buildXtreamChannelsFromFetch('src1', client, categories, {
+    const result = buildXtreamChannelsFromFetch('src1', client, categoryMaps, {
       live: { ok: true, data: [] },
       vod: {
         ok: true,
@@ -130,7 +136,7 @@ describe('buildXtreamChannelsFromFetch', () => {
 
   it('throws when live import fails', () => {
     expect(() =>
-      buildXtreamChannelsFromFetch('src1', client, categories, {
+      buildXtreamChannelsFromFetch('src1', client, categoryMaps, {
         live: { ok: false, error: 'network', message: 'offline' },
         vod: { ok: true, data: [] },
         series: { ok: true, data: [] },
@@ -162,7 +168,7 @@ describe('buildXtreamChannelsFromFetch', () => {
       categoryId: '2',
     }));
 
-    const result = buildXtreamChannelsFromFetch('src-large', client, categories, {
+    const result = buildXtreamChannelsFromFetch('src-large', client, categoryMaps, {
       live: { ok: true, data: live },
       vod: { ok: true, data: vod },
       series: { ok: true, data: series },

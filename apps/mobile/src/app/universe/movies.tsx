@@ -4,35 +4,69 @@ import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { router } from 'expo-router';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import type { Channel } from '@infiny-stream/types';
+import type { Channel, ChannelCategory } from '@infiny-stream/types';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { UniverseHeader } from '@/components/universe/UniverseHeader';
-import { getAllChannelsByKind } from '@/services/channelsRepository';
+import { CategoryBrowser } from '@/components/universe/CategoryBrowser';
+import {
+  countChannels,
+  getAllCategoriesByKind,
+  getAllChannelsByKindAndCategory,
+} from '@/services/channelsRepository';
 import { formatDisplayRating } from '@/services/xtream/mapXtreamCatalog';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
 import { useSourcesStore } from '@/store/useSourcesStore';
 
 const PAGE_SIZE = 120;
 
+type BrowseMode = 'categories' | 'grid';
+
 export default function MoviesUniverseScreen() {
   const { width } = useWindowDimensions();
   const numColumns = useMemo(() => (width >= 1200 ? 5 : width >= 900 ? 4 : width >= 600 ? 3 : 2), [width]);
   const tileWidth = (width - spacing.md * 2 - spacing.sm * (numColumns - 1)) / numColumns;
+
+  const [mode, setMode] = useState<BrowseMode>('categories');
+  const [categories, setCategories] = useState<ChannelCategory[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [languageFilter, setLanguageFilter] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<ChannelCategory | null>(null);
 
   const [movies, setMovies] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const loadedCountRef = useRef(0);
+  const loadingMoreRef = useRef(false);
+  const categoryNameRef = useRef<string | null>(null);
+
   const hasXtreamSource = useSourcesStore((s) => s.sources.some((src) => src.type === 'xtream'));
   const toggleFavorite = useFavoritesStore((s) => s.toggle);
   const isFavorite = useFavoritesStore((s) => s.isFavorite);
 
-  const loadInitial = useCallback(async () => {
+  const loadCategories = useCallback(async () => {
     setLoading(true);
     try {
-      const rows = await getAllChannelsByKind('movie', PAGE_SIZE, 0);
+      const [cats, total] = await Promise.all([
+        getAllCategoriesByKind('movie'),
+        countChannels({ kind: 'movie' }),
+      ]);
+      setCategories(cats);
+      setTotalCount(total);
+      console.log(`[Universe] movie categories=${cats.length} total=${total}`);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadInitialGrid = useCallback(async (categoryName: string | null) => {
+    setLoading(true);
+    loadingMoreRef.current = false;
+    loadedCountRef.current = 0;
+    categoryNameRef.current = categoryName;
+    try {
+      const rows = await getAllChannelsByKindAndCategory('movie', categoryName, PAGE_SIZE, 0);
       loadedCountRef.current = rows.length;
       setMovies(rows);
       setHasMore(rows.length === PAGE_SIZE);
@@ -42,34 +76,83 @@ export default function MoviesUniverseScreen() {
   }, []);
 
   const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
+    if (loadingMoreRef.current || !hasMore || loading) return;
+    loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
-      const rows = await getAllChannelsByKind('movie', PAGE_SIZE, loadedCountRef.current);
-      loadedCountRef.current += rows.length;
+      const offset = loadedCountRef.current;
+      const rows = await getAllChannelsByKindAndCategory(
+        'movie',
+        categoryNameRef.current,
+        PAGE_SIZE,
+        offset
+      );
+      loadedCountRef.current = offset + rows.length;
       setMovies((prev) => [...prev, ...rows]);
       setHasMore(rows.length === PAGE_SIZE);
     } finally {
+      loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [hasMore, loadingMore]);
+  }, [hasMore, loading]);
 
   useEffect(() => {
-    loadedCountRef.current = 0;
+    if (mode === 'categories') {
+      void loadCategories();
+    }
+  }, [mode, loadCategories]);
+
+  const openGrid = (category: ChannelCategory | null) => {
+    setSelectedCategory(category);
+    setMode('grid');
     setMovies([]);
-    setHasMore(false);
-    void loadInitial();
-  }, [loadInitial]);
+    void loadInitialGrid(category?.name ?? null);
+  };
+
+  const backToCategories = () => {
+    setMode('categories');
+    setSelectedCategory(null);
+    setMovies([]);
+  };
 
   const emptyMessage = hasXtreamSource
     ? 'Ce compte Xtream ne propose pas de films, ou le catalogue VOD est indisponible pour le moment.'
     : 'Les films de vos playlists apparaîtront ici.';
 
+  const headerTitle =
+    mode === 'categories' ? 'Films' : selectedCategory?.name ?? 'Tous les films';
+
   return (
     <ScreenSafeArea style={styles.safeArea}>
-      <UniverseHeader title="Films" />
+      <UniverseHeader
+        title={headerTitle}
+        onBack={mode === 'grid' ? backToCategories : undefined}
+      />
 
-      {loading ? (
+      {mode === 'categories' ? (
+        loading ? (
+          <ActivityIndicator color={colors.brand} style={styles.loader} />
+        ) : categories.length === 0 && totalCount === 0 ? (
+          <EmptyState icon="film-outline" title="Aucun film" message={emptyMessage} />
+        ) : categories.length === 0 ? (
+          <EmptyState
+            icon="film-outline"
+            title="Aucune catégorie"
+            message="Les films n'ont pas de catégorie — affichez-les tous."
+            actionLabel="Voir tous les films"
+            onAction={() => openGrid(null)}
+          />
+        ) : (
+          <CategoryBrowser
+            categories={categories}
+            languageFilter={languageFilter}
+            onSelectLanguage={setLanguageFilter}
+            onSelectCategory={(cat) => openGrid(cat)}
+            onSelectAll={() => openGrid(null)}
+            totalCount={totalCount}
+          />
+        )
+      ) : loading ? (
         <ActivityIndicator color={colors.brand} style={styles.loader} />
       ) : movies.length === 0 ? (
         <EmptyState icon="film-outline" title="Aucun film" message={emptyMessage} />

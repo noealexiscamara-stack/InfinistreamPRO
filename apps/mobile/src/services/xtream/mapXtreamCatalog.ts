@@ -18,6 +18,7 @@ export interface PersistableChannel {
   tvgName?: string;
   country?: string;
   category?: string;
+  xtreamCategoryId?: string;
   sortIndex: number;
   kind?: ContentKind;
   plot?: string;
@@ -76,6 +77,7 @@ export function appendXtreamLiveStreams(
       logoUrl: stream.streamIcon,
       groupTitle: category,
       category,
+      xtreamCategoryId: stream.categoryId || undefined,
       tvgId: stream.epgChannelId,
       sortIndex: sortIndexStart + i,
       kind: 'live',
@@ -100,6 +102,7 @@ export function appendXtreamVodStreams(
       logoUrl: vod.icon,
       groupTitle: category,
       category,
+      xtreamCategoryId: vod.categoryId || undefined,
       sortIndex: sortIndexStart + i,
       kind: 'movie',
       rating: vod.rating,
@@ -127,6 +130,7 @@ export function appendXtreamSeriesCatalog(
       logoUrl: series.cover,
       groupTitle: category,
       category,
+      xtreamCategoryId: series.categoryId || undefined,
       sortIndex: sortIndexStart + i,
       kind: 'series',
       plot: series.plot,
@@ -200,17 +204,24 @@ export function mapXtreamSeriesEpisodes(
   return out;
 }
 
+export interface XtreamCategoryMaps {
+  live: Map<string, string>;
+  vod: Map<string, string>;
+  series: Map<string, string>;
+}
+
 /**
  * Builds the full channel list for an Xtream import. Live failure aborts;
  * VOD/series failures are tolerated so a provider without films does not
  * block live TV import.
  *
  * Maps directly into one array — never spreads large catalogs onto the stack.
+ * Category maps are kept separate by type so id "1" in live ≠ id "1" in VOD.
  */
 export function buildXtreamChannelsFromFetch(
   sourceId: string,
   client: StreamUrlBuilder,
-  categoryNameById: Map<string, string>,
+  categories: XtreamCategoryMaps,
   results: XtreamCatalogFetchResults,
   onProgress?: (progress: XtreamImportProgress) => void
 ): BuildXtreamChannelsResult {
@@ -223,7 +234,7 @@ export function buildXtreamChannelsFromFetch(
 
   const liveTotal = results.live.data.length;
   onProgress?.({ phase: 'mapping', step: 'live', processedCount: 0, totalCount: liveTotal });
-  sortIndex += appendXtreamLiveStreams(channels, results.live.data, client, categoryNameById, sortIndex);
+  sortIndex += appendXtreamLiveStreams(channels, results.live.data, client, categories.live, sortIndex);
   onProgress?.({ phase: 'mapping', step: 'live', processedCount: liveTotal, totalCount: liveTotal });
 
   let vodAvailable = false;
@@ -236,7 +247,7 @@ export function buildXtreamChannelsFromFetch(
     const vod = results.vod.data;
     for (let i = 0; i < vod.length; i += ARRAY_APPEND_BATCH) {
       const slice = vod.slice(i, i + ARRAY_APPEND_BATCH);
-      sortIndex += appendXtreamVodStreams(channels, slice, client, categoryNameById, sortIndex);
+      sortIndex += appendXtreamVodStreams(channels, slice, client, categories.vod, sortIndex);
       onProgress?.({
         phase: 'mapping',
         step: 'vod',
@@ -253,7 +264,7 @@ export function buildXtreamChannelsFromFetch(
     const series = results.series.data;
     for (let i = 0; i < series.length; i += ARRAY_APPEND_BATCH) {
       const slice = series.slice(i, i + ARRAY_APPEND_BATCH);
-      sortIndex += appendXtreamSeriesCatalog(channels, slice, sourceId, categoryNameById, sortIndex);
+      sortIndex += appendXtreamSeriesCatalog(channels, slice, sourceId, categories.series, sortIndex);
       onProgress?.({
         phase: 'mapping',
         step: 'series',

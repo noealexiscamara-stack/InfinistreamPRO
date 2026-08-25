@@ -5,11 +5,17 @@ import { router } from 'expo-router';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { groupEpisodesIntoSeries } from '@infiny-stream/shared';
-import type { Channel } from '@infiny-stream/types';
+import type { Channel, ChannelCategory } from '@infiny-stream/types';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { UniverseHeader } from '@/components/universe/UniverseHeader';
-import { getAllChannelsByKind, getXtreamSeriesCatalog } from '@/services/channelsRepository';
+import { CategoryBrowser } from '@/components/universe/CategoryBrowser';
+import {
+  getAllChannelsByKind,
+  getKindCounts,
+  getXtreamSeriesCatalog,
+  getXtreamSeriesCategories,
+} from '@/services/channelsRepository';
 import { isXtreamSeriesPlaceholder } from '@/services/persistChannels';
 import { formatDisplayRating } from '@/services/xtream/mapXtreamCatalog';
 
@@ -22,6 +28,8 @@ interface SeriesRow {
   logoUrl?: string;
   ratingLabel: string | null;
 }
+
+type BrowseMode = 'categories' | 'grid';
 
 function m3uSeriesRows(channels: Channel[]): SeriesRow[] {
   const candidates = channels.filter(
@@ -50,19 +58,45 @@ export default function SeriesUniverseScreen() {
   const numColumns = useMemo(() => (width >= 1200 ? 5 : width >= 900 ? 4 : width >= 600 ? 3 : 2), [width]);
   const tileWidth = (width - spacing.md * 2 - spacing.sm * (numColumns - 1)) / numColumns;
 
+  const [mode, setMode] = useState<BrowseMode>('categories');
+  const [categories, setCategories] = useState<ChannelCategory[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [languageFilter, setLanguageFilter] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<ChannelCategory | null>(null);
+
   const [rows, setRows] = useState<SeriesRow[]>([]);
   const [unparsed, setUnparsed] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const xtreamOffsetRef = useRef(0);
+  const loadingMoreRef = useRef(false);
+  const categoryNameRef = useRef<string | null>(null);
 
-  const loadInitial = useCallback(async () => {
+  const loadCategories = useCallback(async () => {
     setLoading(true);
     try {
+      const [cats, counts] = await Promise.all([getXtreamSeriesCategories(), getKindCounts()]);
+      setCategories(cats);
+      setTotalCount(counts.series);
+      console.log(`[Universe] series categories=${cats.length} total=${counts.series}`);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadInitialGrid = useCallback(async (categoryName: string | null) => {
+    setLoading(true);
+    loadingMoreRef.current = false;
+    xtreamOffsetRef.current = 0;
+    categoryNameRef.current = categoryName;
+    try {
+      // M3U series only on "all" — category filter is Xtream category_name based.
       const [m3uPage, xtreamPage] = await Promise.all([
-        getAllChannelsByKind('series', PAGE_SIZE, 0),
-        getXtreamSeriesCatalog(PAGE_SIZE, 0),
+        categoryName
+          ? Promise.resolve([] as Channel[])
+          : getAllChannelsByKind('series', PAGE_SIZE, 0),
+        getXtreamSeriesCatalog(PAGE_SIZE, 0, categoryName),
       ]);
 
       const m3uCandidates = m3uPage.filter(
@@ -72,7 +106,7 @@ export default function SeriesUniverseScreen() {
 
       xtreamOffsetRef.current = xtreamPage.length;
       setRows([...m3uSeriesRows(m3uPage), ...xtreamSeriesRows(xtreamPage)]);
-      setUnparsed(grouped.unparsed);
+      setUnparsed(categoryName ? [] : grouped.unparsed);
       setHasMore(xtreamPage.length === PAGE_SIZE);
     } finally {
       setLoading(false);
@@ -80,38 +114,90 @@ export default function SeriesUniverseScreen() {
   }, []);
 
   const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
+    if (loadingMoreRef.current || !hasMore || loading) return;
+    loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
-      const xtreamPage = await getXtreamSeriesCatalog(PAGE_SIZE, xtreamOffsetRef.current);
-      xtreamOffsetRef.current += xtreamPage.length;
+      const offset = xtreamOffsetRef.current;
+      const xtreamPage = await getXtreamSeriesCatalog(PAGE_SIZE, offset, categoryNameRef.current);
+      xtreamOffsetRef.current = offset + xtreamPage.length;
       setRows((prev) => [...prev, ...xtreamSeriesRows(xtreamPage)]);
       setHasMore(xtreamPage.length === PAGE_SIZE);
     } finally {
+      loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [hasMore, loadingMore]);
+  }, [hasMore, loading]);
 
   useEffect(() => {
-    xtreamOffsetRef.current = 0;
+    if (mode === 'categories') {
+      void loadCategories();
+    }
+  }, [mode, loadCategories]);
+
+  const openGrid = (category: ChannelCategory | null) => {
+    setSelectedCategory(category);
+    setMode('grid');
     setRows([]);
     setUnparsed([]);
-    setHasMore(false);
-    void loadInitial();
-  }, [loadInitial]);
+    void loadInitialGrid(category?.name ?? null);
+  };
+
+  const backToCategories = () => {
+    setMode('categories');
+    setSelectedCategory(null);
+    setRows([]);
+    setUnparsed([]);
+  };
 
   const unparsedPreview = unparsed.slice(0, UNPARSED_PREVIEW);
   const unparsedRemaining = Math.max(0, unparsed.length - UNPARSED_PREVIEW);
   const showEmpty = !loading && rows.length === 0 && unparsed.length === 0;
+  const headerTitle =
+    mode === 'categories' ? 'Séries' : selectedCategory?.name ?? 'Toutes les séries';
 
   return (
     <ScreenSafeArea style={styles.safeArea}>
-      <UniverseHeader title="Séries" />
+      <UniverseHeader
+        title={headerTitle}
+        onBack={mode === 'grid' ? backToCategories : undefined}
+      />
 
-      {loading ? (
+      {mode === 'categories' ? (
+        loading ? (
+          <ActivityIndicator color={colors.brand} style={styles.loader} />
+        ) : categories.length === 0 && totalCount === 0 ? (
+          <EmptyState
+            icon="albums-outline"
+            title="Aucune série"
+            message="Les séries de vos playlists apparaîtront ici."
+          />
+        ) : categories.length === 0 ? (
+          <EmptyState
+            icon="albums-outline"
+            title="Aucune catégorie"
+            message="Les séries n'ont pas de catégorie — affichez-les toutes."
+            actionLabel="Voir toutes les séries"
+            onAction={() => openGrid(null)}
+          />
+        ) : (
+          <CategoryBrowser
+            categories={categories}
+            languageFilter={languageFilter}
+            onSelectLanguage={setLanguageFilter}
+            onSelectCategory={(cat) => openGrid(cat)}
+            onSelectAll={() => openGrid(null)}
+            totalCount={totalCount}
+          />
+        )
+      ) : loading ? (
         <ActivityIndicator color={colors.brand} style={styles.loader} />
       ) : showEmpty ? (
-        <EmptyState icon="albums-outline" title="Aucune série" message="Les séries de vos playlists apparaîtront ici." />
+        <EmptyState
+          icon="albums-outline"
+          title="Aucune série"
+          message="Les séries de vos playlists apparaîtront ici."
+        />
       ) : (
         <FlatList
           data={rows}

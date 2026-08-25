@@ -23,7 +23,7 @@ export interface PersistChannelsResult {
 }
 
 /**
- * Rows per multi-row INSERT. 500 × 20 bind params = 10 000 variables —
+ * Rows per multi-row INSERT. 500 × 21 bind params = 10 500 variables —
  * well under SQLite's default SQLITE_MAX_VARIABLE_NUMBER (32 766).
  * One native call per batch instead of one per row.
  */
@@ -40,6 +40,7 @@ const CHANNEL_INSERT_COLUMNS = [
   'tvgName',
   'country',
   'category',
+  'xtreamCategoryId',
   'sortIndex',
   'kind',
   'plot',
@@ -99,6 +100,7 @@ function bindRowParams(sourceId: string, ch: TaggedChannel): BindValue[] {
     ch.tvgName ?? null,
     ch.country ?? null,
     ch.category ?? null,
+    ch.xtreamCategoryId ?? null,
     ch.sortIndex,
     ch.kind,
     ch.plot ?? null,
@@ -156,6 +158,7 @@ export async function replaceSourceChannels(
       tvgName: ch.tvgName,
       country: ch.country,
       category: ch.category,
+      xtreamCategoryId: ch.xtreamCategoryId,
       sortIndex: ch.sortIndex,
       kind: ch.kind,
       plot: ch.plot,

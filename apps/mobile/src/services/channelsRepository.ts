@@ -116,6 +116,43 @@ export async function getCategories(sourceId: string, kind?: ContentKind): Promi
     .map((r) => ({ id: `${sourceId}::${r.category}`, sourceId, name: r.category as string, channelCount: r.count }));
 }
 
+/** Categories aggregated across all sources for a content kind (Films / Séries browser). */
+export async function getAllCategoriesByKind(kind: ContentKind): Promise<ChannelCategory[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<{ category: string | null; count: number }>(
+    `SELECT category, COUNT(*) as count FROM channels WHERE kind = ? AND category IS NOT NULL AND TRIM(category) != ''
+     GROUP BY category ORDER BY category COLLATE NOCASE ASC`,
+    kind
+  );
+  return rows
+    .filter((r) => r.category)
+    .map((r) => ({
+      id: `kind:${kind}::${r.category}`,
+      sourceId: '',
+      name: r.category as string,
+      channelCount: r.count,
+    }));
+}
+
+export async function getAllChannelsByKindAndCategory(
+  kind: ContentKind,
+  category: string | null,
+  limit = 120,
+  offset = 0
+): Promise<Channel[]> {
+  const db = await getDatabase();
+  if (category) {
+    return db.getAllAsync<Channel>(
+      `SELECT * FROM channels WHERE kind = ? AND category = ? ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
+      kind,
+      category,
+      limit,
+      offset
+    );
+  }
+  return getAllChannelsByKind(kind, limit, offset);
+}
+
 export async function getChannels(sourceId: string, options: ChannelQueryOptions = {}): Promise<Channel[]> {
   const db = await getDatabase();
   const { category, kind, limit = 500, offset = 0 } = options;
@@ -207,13 +244,45 @@ export async function getChannelByXtreamSeriesId(sourceId: string, xtreamSeriesI
   );
 }
 
-export async function getXtreamSeriesCatalog(limit = 120, offset = 0): Promise<Channel[]> {
+export async function getXtreamSeriesCatalog(
+  limit = 120,
+  offset = 0,
+  category?: string | null
+): Promise<Channel[]> {
   const db = await getDatabase();
+  if (category) {
+    return db.getAllAsync<Channel>(
+      `SELECT * FROM channels WHERE kind = 'series' AND xtreamSeriesId IS NOT NULL AND xtreamEpisodeId IS NULL
+       AND category = ? ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
+      category,
+      limit,
+      offset
+    );
+  }
   return db.getAllAsync<Channel>(
     `SELECT * FROM channels WHERE kind = 'series' AND xtreamSeriesId IS NOT NULL AND xtreamEpisodeId IS NULL ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
     limit,
     offset
   );
+}
+
+/** Series categories only for Xtream catalog headers (excludes M3U episode rows). */
+export async function getXtreamSeriesCategories(): Promise<ChannelCategory[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<{ category: string | null; count: number }>(
+    `SELECT category, COUNT(*) as count FROM channels
+     WHERE kind = 'series' AND xtreamSeriesId IS NOT NULL AND xtreamEpisodeId IS NULL
+       AND category IS NOT NULL AND TRIM(category) != ''
+     GROUP BY category ORDER BY category COLLATE NOCASE ASC`
+  );
+  return rows
+    .filter((r) => r.category)
+    .map((r) => ({
+      id: `kind:series::${r.category}`,
+      sourceId: '',
+      name: r.category as string,
+      channelCount: r.count,
+    }));
 }
 
 export async function getSeriesEpisodes(sourceId: string, xtreamSeriesId: number): Promise<Channel[]> {
