@@ -1,5 +1,6 @@
 import { XtreamClient, type XtreamAuthInfo } from '@infiny-stream/shared';
 import type { XtreamSource } from '@infiny-stream/types';
+import { countMovies, getDuplicateMovieTitles } from '@/services/channelsRepository';
 import { formatImportSummary, replaceSourceChannels } from '@/services/persistChannels';
 import { buildXtreamChannelsFromFetch } from '@/services/xtream/mapXtreamCatalog';
 
@@ -142,6 +143,20 @@ export async function importXtreamSource(
       onProgress?.({ phase: 'saving', step: 'series', processedCount, totalCount }),
   });
   const ignored = persisted.duplicatesRemoved + persisted.rejected;
+
+  // Post-import duplicate-title sample (diagnostic / P3 proof on device logs).
+  try {
+    const totalMovies = await countMovies();
+    const titleDupes = await getDuplicateMovieTitles(20);
+    console.log(
+      `[Import] movies total=${totalMovies} titleDuplicates=${titleDupes.length}` +
+        (titleDupes.length
+          ? ` sample=${titleDupes.map((d) => `${d.title}×${d.count}`).join('; ')}`
+          : '')
+    );
+  } catch {
+    // Diagnostics must never fail the import.
+  }
 
   return {
     channelCount: persisted.imported,

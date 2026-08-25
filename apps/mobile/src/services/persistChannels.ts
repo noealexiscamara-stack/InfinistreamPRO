@@ -4,6 +4,7 @@ import {
   classifyEntry,
   classifyM3uEntry,
   dedupeChannelsByUrl,
+  dedupeXtreamByProviderId,
   groupChannelsByQuality,
 } from '@infiny-stream/shared';
 import type { Channel, ContentKind, Source } from '@infiny-stream/types';
@@ -142,8 +143,13 @@ export async function replaceSourceChannels(
   channels: PersistableChannel[],
   options?: { sourceType?: Source['type']; onProgress?: (processedCount: number, totalCount: number) => void }
 ): Promise<PersistChannelsResult> {
-  const { channels: unique, duplicatesRemoved } = dedupeChannelsByUrl(channels);
-  const tagged = withKind(unique, options?.sourceType);
+  const { channels: uniqueByUrl, duplicatesRemoved: urlDupes } = dedupeChannelsByUrl(channels);
+  const taggedRaw = withKind(uniqueByUrl, options?.sourceType);
+  const { channels: tagged, duplicatesRemoved: providerDupes } = dedupeXtreamByProviderId(taggedRaw);
+  const duplicatesRemoved = urlDupes + providerDupes;
+  if (providerDupes > 0) {
+    console.log(`[Import] dropped ${providerDupes} Xtream rows with duplicate provider stream/series id`);
+  }
 
   const asChannels: Channel[] = [];
   for (const ch of tagged) {

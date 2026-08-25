@@ -88,7 +88,11 @@ export default function MoviesUniverseScreen() {
         offset
       );
       loadedCountRef.current = offset + rows.length;
-      setMovies((prev) => [...prev, ...rows]);
+      setMovies((prev) => {
+        const seen = new Set(prev.map((m) => m.id));
+        const fresh = rows.filter((r) => !seen.has(r.id));
+        return fresh.length === 0 ? prev : [...prev, ...fresh];
+      });
       setHasMore(rows.length === PAGE_SIZE);
     } finally {
       loadingMoreRef.current = false;

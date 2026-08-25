@@ -46,3 +46,46 @@ export function dedupeChannelsByUrl<T extends { streamUrl: string }>(channels: T
 
   return { channels: out, duplicatesRemoved };
 }
+
+/**
+ * Xtream catalogs sometimes list the same numeric stream_id twice with
+ * different container extensions (or two nearly-identical rows). URL-based
+ * dedupe misses those because `/movie/…/101.mp4` ≠ `/movie/…/101.mkv`.
+ *
+ * Keep the first row per (kind, xtreamStreamId) / series header id.
+ * Live vs movie can share a numeric id — kind is part of the key.
+ */
+export function dedupeXtreamByProviderId<
+  T extends {
+    kind?: string;
+    xtreamStreamId?: number;
+    xtreamSeriesId?: number;
+    xtreamEpisodeId?: string;
+  },
+>(channels: T[]): DedupeResult<T> {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  let duplicatesRemoved = 0;
+
+  for (const channel of channels) {
+    let key: string | null = null;
+    if (channel.xtreamEpisodeId != null && channel.xtreamSeriesId != null) {
+      key = `ep:${channel.xtreamSeriesId}:${channel.xtreamEpisodeId}`;
+    } else if (channel.xtreamSeriesId != null && channel.xtreamEpisodeId == null && channel.kind === 'series') {
+      key = `series:${channel.xtreamSeriesId}`;
+    } else if (channel.xtreamStreamId != null && channel.kind) {
+      key = `${channel.kind}:${channel.xtreamStreamId}`;
+    }
+
+    if (key != null) {
+      if (seen.has(key)) {
+        duplicatesRemoved++;
+        continue;
+      }
+      seen.add(key);
+    }
+    out.push(channel);
+  }
+
+  return { channels: out, duplicatesRemoved };
+}

@@ -1,4 +1,4 @@
-import { dedupeChannelsByUrl } from '../dedupe';
+import { dedupeChannelsByUrl, dedupeXtreamByProviderId } from '../dedupe';
 import { channelId, stableHash } from '../../utils/id';
 
 const ch = (name: string, streamUrl: string) => ({ name, streamUrl });
@@ -60,6 +60,64 @@ describe('dedupeChannelsByUrl', () => {
     const { channels } = dedupeChannelsByUrl(raw);
     const ids = channels.map((c) => channelId('src1', c.streamUrl));
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe('dedupeXtreamByProviderId', () => {
+  it('drops the same vod stream_id with different container extensions', () => {
+    // URL dedupe alone keeps both — /movie/…/101.mp4 ≠ /movie/…/101.mkv
+    const raw = [
+      {
+        name: 'Inception',
+        streamUrl: 'http://x/movie/u/p/101.mp4',
+        kind: 'movie' as const,
+        xtreamStreamId: 101,
+      },
+      {
+        name: 'Inception',
+        streamUrl: 'http://x/movie/u/p/101.mkv',
+        kind: 'movie' as const,
+        xtreamStreamId: 101,
+      },
+      {
+        name: 'Other',
+        streamUrl: 'http://x/movie/u/p/102.mp4',
+        kind: 'movie' as const,
+        xtreamStreamId: 102,
+      },
+    ];
+    const byUrl = dedupeChannelsByUrl(raw);
+    expect(byUrl.channels).toHaveLength(3);
+
+    const { channels, duplicatesRemoved } = dedupeXtreamByProviderId(byUrl.channels);
+    expect(channels).toHaveLength(2);
+    expect(duplicatesRemoved).toBe(1);
+
+    // SQL-shaped proof: SELECT title, COUNT(*) … HAVING COUNT(*) > 1
+    const beforeTitles = new Map<string, number>();
+    for (const row of byUrl.channels) {
+      beforeTitles.set(row.name, (beforeTitles.get(row.name) ?? 0) + 1);
+    }
+    const beforeDupes = [...beforeTitles.entries()].filter(([, c]) => c > 1);
+    expect(beforeDupes).toEqual([['Inception', 2]]);
+
+    const afterTitles = new Map<string, number>();
+    for (const row of channels) {
+      afterTitles.set(row.name, (afterTitles.get(row.name) ?? 0) + 1);
+    }
+    const afterDupes = [...afterTitles.entries()].filter(([, c]) => c > 1);
+    expect(afterDupes).toEqual([]);
+    expect(byUrl.channels.length).toBe(3); // movie total before
+    expect(channels.length).toBe(2); // movie total after
+  });
+
+  it('keeps live and movie that share a numeric stream_id (kind in key)', () => {
+    const { channels, duplicatesRemoved } = dedupeXtreamByProviderId([
+      { name: 'TF1', streamUrl: 'http://x/live/u/p/42.m3u8', kind: 'live', xtreamStreamId: 42 },
+      { name: 'Film 42', streamUrl: 'http://x/movie/u/p/42.mp4', kind: 'movie', xtreamStreamId: 42 },
+    ]);
+    expect(channels).toHaveLength(2);
+    expect(duplicatesRemoved).toBe(0);
   });
 });
 

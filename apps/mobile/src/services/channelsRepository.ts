@@ -293,3 +293,17 @@ export async function getSeriesEpisodes(sourceId: string, xtreamSeriesId: number
     xtreamSeriesId
   );
 }
+
+/** Diagnostic: titles that appear more than once among movies (proof for dedupe work). */
+export async function getDuplicateMovieTitles(limit = 20): Promise<Array<{ title: string; count: number }>> {
+  const db = await getDatabase();
+  return db.getAllAsync<{ title: string; count: number }>(
+    `SELECT name AS title, COUNT(*) AS count FROM channels WHERE kind = 'movie'
+     GROUP BY name HAVING COUNT(*) > 1 ORDER BY count DESC LIMIT ?`,
+    limit
+  );
+}
+
+export async function countMovies(): Promise<number> {
+  return countChannels({ kind: 'movie' });
+}
