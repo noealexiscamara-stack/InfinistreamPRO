@@ -18,7 +18,7 @@
     },
     "android": {
       "package": "com.infinystream.app",
-      "versionCode": 8,
+      "versionCode": 9,
       "adaptiveIcon": {
         "backgroundColor": "#0B0D12",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -40,6 +40,7 @@
       "expo-router",
       "expo-sqlite",
       "expo-video",
+      "expo-brightness",
       "expo-navigation-bar",
       "./plugins/withAndroidTv",
       "./plugins/withLocalReleaseSigning",
