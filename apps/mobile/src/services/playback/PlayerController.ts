@@ -243,7 +243,11 @@ export class PlayerController {
     const session = this.sourceSessionId;
     const source = buildStreamVideoSource(url);
     const masked = maskStreamCredentials(url);
-    const ua = source.headers?.['User-Agent'] ?? '(none)';
+    const headers =
+      source && typeof source === 'object' && 'headers' in source
+        ? (source.headers as Record<string, string> | undefined)
+        : undefined;
+    const ua = headers?.['User-Agent'] ?? '(none)';
 
     console.log(
       `[Player] source OPEN session=${session} kind=${this.currentKind ?? 'unknown'} hls=${isLikelyHls(url)} ua=${ua} url=${masked}`

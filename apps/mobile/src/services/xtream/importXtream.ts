@@ -97,7 +97,7 @@ export async function importXtreamSource(
 
   if (!liveCategories.ok) throw new XtreamConnectionError(liveCategories.error, liveCategories.message);
 
-  const toMap = (list: typeof liveCategories): Map<string, string> => {
+  const toMap = (list: { ok: true; data: Array<{ categoryId: string; categoryName: string }> } | { ok: false }): Map<string, string> => {
     const map = new Map<string, string>();
     if (list.ok) for (const c of list.data) map.set(c.categoryId, c.categoryName);
     return map;

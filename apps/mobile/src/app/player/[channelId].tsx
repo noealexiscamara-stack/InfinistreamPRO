@@ -1,14 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useVideoPlayer, type VideoPlayerStatus } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { runOnJS } from 'react-native-reanimated';
 import type { Channel, GroupedChannel } from '@infiny-stream/types';
 import { colors, networkQualityColor, radius, spacing, typography } from '@/theme/tokens';
-import { getChannelById, getChannels } from '@/services/channelsRepository';
+import { getChannelById, getChannels, getSeriesEpisodes } from '@/services/channelsRepository';
 import { findGroupContaining, groupedFromChannels } from '@/services/channelGroups';
 import { recordHistory } from '@/services/favoritesHistoryRepository';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
@@ -32,6 +30,7 @@ import { usePlayerAspectStore } from '@/store/usePlayerAspectStore';
 import { useImmersivePlayback } from '@/hooks/useImmersivePlayback';
 import { PlayerVideoSurface } from '@/components/player/PlayerVideoSurface';
 import { PlayerChannelPicker } from '@/components/player/PlayerChannelPicker';
+import { PlayerGestureLayer } from '@/components/player/PlayerGestureLayer';
 
 type PlayerScreenState = 'loading' | 'playing' | 'reconnecting' | 'error';
 
@@ -45,6 +44,7 @@ export default function PlayerScreen() {
   const [channel, setChannel] = useState<Channel | null>(null);
   const [group, setGroup] = useState<GroupedChannel | null>(null);
   const [siblings, setSiblings] = useState<GroupedChannel[]>([]);
+  const [episodeSiblings, setEpisodeSiblings] = useState<Channel[]>([]);
   const [screenState, setScreenState] = useState<PlayerScreenState>('loading');
   const [controlsVisible, setControlsVisible] = useState(true);
   const [channelListVisible, setChannelListVisible] = useState(false);
@@ -158,6 +158,7 @@ export default function PlayerScreen() {
       setChannel(null);
       setGroup(null);
       setSiblings([]);
+      setEpisodeSiblings([]);
       setControlsVisible(true);
       setChannelListVisible(false);
 
@@ -172,6 +173,11 @@ export default function PlayerScreen() {
         return;
       }
       setChannel(ch);
+
+      if (ch.kind === 'series' && ch.xtreamSeriesId != null && ch.xtreamEpisodeId) {
+        const eps = await getSeriesEpisodes(ch.sourceId, ch.xtreamSeriesId);
+        if (!cancelled) setEpisodeSiblings(eps);
+      }
 
       let streamUrl = ch.streamUrl;
       if (ch.kind === 'movie' || ch.kind === 'series') {
@@ -304,15 +310,18 @@ export default function PlayerScreen() {
     };
   }, [player, setPlaybackHeight, recordFailure, channel, group]);
 
-  const currentIndex = useMemo(() => siblings.findIndex((g) => g.id === group?.id), [siblings, group]);
+  const episodeIndex = channel ? episodeSiblings.findIndex((ep) => ep.id === channel.id) : -1;
+  const showEpisodeSkip =
+    channel?.kind === 'series' && !!channel.xtreamEpisodeId && episodeSiblings.length > 1;
 
-  const goToSibling = useCallback(
+  const goToEpisode = useCallback(
     (direction: 1 | -1) => {
-      if (siblings.length === 0 || currentIndex === -1) return;
-      const nextIndex = (currentIndex + direction + siblings.length) % siblings.length;
-      router.replace(`/player/${siblings[nextIndex].tiers[0].channel.id}`);
+      if (!showEpisodeSkip || episodeIndex < 0) return;
+      const nextIndex = episodeIndex + direction;
+      if (nextIndex < 0 || nextIndex >= episodeSiblings.length) return;
+      router.replace(`/player/${episodeSiblings[nextIndex].id}`);
     },
-    [siblings, currentIndex]
+    [showEpisodeSkip, episodeIndex, episodeSiblings]
   );
 
   const selectChannelFromList = useCallback((item: GroupedChannel) => {
@@ -338,43 +347,17 @@ export default function PlayerScreen() {
     controllerRef.current.loadChannel(streamUrl, channel.kind).then(() => setScreenState('playing'));
   }
 
-  const singleTapGesture = useMemo(
-    () =>
-      Gesture.Tap()
-        .numberOfTaps(1)
-        .onEnd(() => {
-          runOnJS(toggleControls)();
-        }),
-    [toggleControls]
-  );
-
-  const doubleTapGesture = useMemo(
-    () =>
-      Gesture.Tap()
-        .numberOfTaps(2)
-        .onEnd(() => {
-          runOnJS(cycleAspectMode)();
-        }),
-    [cycleAspectMode]
-  );
-
-  const centerTapGesture = useMemo(
-    () => Gesture.Exclusive(doubleTapGesture, singleTapGesture),
-    [doubleTapGesture, singleTapGesture]
-  );
-
   return (
     <View style={styles.root}>
       <View style={styles.videoWrap}>
         {showVideo ? (
           <>
             <PlayerVideoSurface player={player} aspectMode={aspectMode} />
-            <GestureDetector gesture={singleTapGesture}>
-              <View style={styles.tapLayer} />
-            </GestureDetector>
-            <GestureDetector gesture={centerTapGesture}>
-              <View style={styles.centerTapZone} />
-            </GestureDetector>
+            <PlayerGestureLayer
+              player={player}
+              onToggleControls={toggleControls}
+              onCycleAspect={cycleAspectMode}
+            />
           </>
         ) : (
           <View style={styles.radioBackdrop}>
@@ -467,21 +450,23 @@ export default function PlayerScreen() {
 
             {!isRadio && (
               <View style={styles.bottomBar}>
-                <Pressable
-                  style={styles.controlButton}
-                  onPress={() => {
-                    goToSibling(-1);
-                    revealControls();
-                  }}
-                  hitSlop={12}
-                  disabled={siblings.length === 0}
-                >
-                  <Ionicons
-                    name="play-skip-back"
-                    size={26}
-                    color={siblings.length === 0 ? colors.textTertiary : colors.textPrimary}
-                  />
-                </Pressable>
+                {showEpisodeSkip ? (
+                  <Pressable
+                    style={styles.controlButton}
+                    onPress={() => {
+                      goToEpisode(-1);
+                      revealControls();
+                    }}
+                    hitSlop={12}
+                    disabled={episodeIndex <= 0}
+                  >
+                    <Ionicons
+                      name="play-skip-back"
+                      size={26}
+                      color={episodeIndex <= 0 ? colors.textTertiary : colors.textPrimary}
+                    />
+                  </Pressable>
+                ) : null}
 
                 <Pressable
                   style={styles.playButton}
@@ -495,21 +480,27 @@ export default function PlayerScreen() {
                   <Ionicons name={player.playing ? 'pause' : 'play'} size={30} color={colors.textPrimary} />
                 </Pressable>
 
-                <Pressable
-                  style={styles.controlButton}
-                  onPress={() => {
-                    goToSibling(1);
-                    revealControls();
-                  }}
-                  hitSlop={12}
-                  disabled={siblings.length === 0}
-                >
-                  <Ionicons
-                    name="play-skip-forward"
-                    size={26}
-                    color={siblings.length === 0 ? colors.textTertiary : colors.textPrimary}
-                  />
-                </Pressable>
+                {showEpisodeSkip ? (
+                  <Pressable
+                    style={styles.controlButton}
+                    onPress={() => {
+                      goToEpisode(1);
+                      revealControls();
+                    }}
+                    hitSlop={12}
+                    disabled={episodeIndex < 0 || episodeIndex >= episodeSiblings.length - 1}
+                  >
+                    <Ionicons
+                      name="play-skip-forward"
+                      size={26}
+                      color={
+                        episodeIndex < 0 || episodeIndex >= episodeSiblings.length - 1
+                          ? colors.textTertiary
+                          : colors.textPrimary
+                      }
+                    />
+                  </Pressable>
+                ) : null}
 
                 <View style={styles.bottomActions}>
                   <Pressable
@@ -560,14 +551,6 @@ export default function PlayerScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
   videoWrap: { flex: 1, backgroundColor: '#000' },
-  tapLayer: StyleSheet.absoluteFill,
-  centerTapZone: {
-    position: 'absolute',
-    width: '50%',
-    height: '50%',
-    top: '25%',
-    left: '25%',
-  },
   radioBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.xl },
   radioTitle: { ...typography.title, color: colors.textPrimary, textAlign: 'center' },
   radioHint: { ...typography.body, color: colors.textSecondary, textAlign: 'center' },
@@ -591,6 +574,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.md,
     backgroundColor: 'rgba(0,0,0,0.55)',
+    zIndex: 5,
   },
   overlayTitle: { ...typography.headline, color: colors.textPrimary, textAlign: 'center', paddingHorizontal: spacing.xl },
   errorDetail: {
@@ -612,6 +596,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: 'space-between',
     backgroundColor: 'rgba(0,0,0,0.28)',
+    zIndex: 4,
   },
   topBar: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   channelInfo: { flex: 1 },

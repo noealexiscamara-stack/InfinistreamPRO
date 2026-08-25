@@ -180,10 +180,12 @@ export default function SeriesDetailScreen() {
         />
       ) : (
         <FlatList
-          data={phase === 'episodes' ? episodeRows : seasonOptions.map((s) => ({ season: s }))}
-          keyExtractor={(item) =>
-            'season' in item && !('id' in item) ? `season-${item.season}` : (item as EpisodeListItem).id
+          data={
+            phase === 'episodes'
+              ? episodeRows
+              : seasonOptions.map((s) => ({ id: `season-${s}`, label: `Saison ${s}`, channelId: '', season: s }))
           }
+          keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           ListHeaderComponent={
             <View style={styles.header}>
@@ -219,7 +221,7 @@ export default function SeriesDetailScreen() {
           }
           renderItem={({ item }) => {
             if (phase === 'seasons') {
-              const season = (item as { season: number }).season;
+              const season = (item as EpisodeListItem & { season: number }).season;
               const count =
                 xtreamSeasons.length > 0
                   ? xtreamEpisodes.filter((ep) => ep.season === season).length
@@ -232,11 +234,10 @@ export default function SeriesDetailScreen() {
                 </Pressable>
               );
             }
-            const ep = item as EpisodeListItem;
             return (
-              <Pressable style={styles.row} onPress={() => router.push(`/player/${ep.channelId}`)}>
+              <Pressable style={styles.row} onPress={() => router.push(`/player/${item.channelId}`)}>
                 <Text style={styles.rowTitle} numberOfLines={2}>
-                  {ep.label}
+                  {item.label}
                 </Text>
                 <Text style={styles.playLabel}>Lire</Text>
               </Pressable>
