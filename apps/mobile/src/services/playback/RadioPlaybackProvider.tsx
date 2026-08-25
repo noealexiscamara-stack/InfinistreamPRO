@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { buildStreamVideoSource } from '@/services/playback/streamSource';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import type { Channel } from '@infiny-stream/types';
@@ -24,16 +25,21 @@ export function RadioPlaybackProvider({ children }: { children: ReactNode }) {
   const playRadio = useCallback(
     (channel: Channel) => {
       setActiveChannel(channel);
-      player.replace({ uri: channel.streamUrl });
+      console.log(`[Player/Radio] source OPEN url=${channel.streamUrl.slice(0, 120)}`);
+      player.replace(buildStreamVideoSource(channel.streamUrl));
       player.play();
     },
     [player]
   );
 
   const stopRadio = useCallback(() => {
+    if (activeChannel) {
+      console.log(`[Player/Radio] source RELEASE url=${activeChannel.streamUrl.slice(0, 120)}`);
+    }
     player.pause();
+    player.replace(null);
     setActiveChannel(null);
-  }, [player]);
+  }, [player, activeChannel]);
 
   const value = useMemo(() => ({ playRadio, stopRadio, activeChannel }), [playRadio, stopRadio, activeChannel]);
 

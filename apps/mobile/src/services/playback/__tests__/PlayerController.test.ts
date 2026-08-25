@@ -35,10 +35,12 @@ describe('PlayerController (native ABR)', () => {
 
     await controller.loadChannel(HLS_MASTER_URL);
 
-    expect(mockPlayer.replace).toHaveBeenCalledTimes(1);
-    const source = (mockPlayer.replace as jest.Mock).mock.calls[0][0];
+    expect(mockPlayer.replace).toHaveBeenCalledTimes(2);
+    expect(mockPlayer.replace).toHaveBeenNthCalledWith(1, null);
+    const source = (mockPlayer.replace as jest.Mock).mock.calls[1][0];
     expect(source.uri).toBe(HLS_MASTER_URL);
     expect(source.contentType).toBe('hls');
+    expect(source.headers?.['User-Agent']).toBeDefined();
     expect(NetworkMonitor.reportTimedDownload).not.toHaveBeenCalled();
     expect(NetworkMonitor.reportSample).not.toHaveBeenCalled();
 
@@ -51,9 +53,23 @@ describe('PlayerController (native ABR)', () => {
 
     await controller.loadChannel(DIRECT_TS_URL);
 
-    const source = (mockPlayer.replace as jest.Mock).mock.calls[0][0];
+    const source = (mockPlayer.replace as jest.Mock).mock.calls[1][0];
     expect(source.uri).toBe(DIRECT_TS_URL);
     expect(source.contentType).toBeUndefined();
+    expect(source.headers?.['User-Agent']).toBeDefined();
+
+    controller.dispose();
+  });
+
+  it('releases the native source before loading another channel', async () => {
+    const mockPlayer = createMockPlayer();
+    const controller = new PlayerController(mockPlayer);
+
+    await controller.loadChannel(HLS_MASTER_URL);
+    await controller.loadChannel(DIRECT_TS_URL);
+
+    expect(mockPlayer.replace).toHaveBeenCalledTimes(4);
+    expect(mockPlayer.replace).toHaveBeenNthCalledWith(3, null);
 
     controller.dispose();
   });
@@ -63,14 +79,15 @@ describe('PlayerController (native ABR)', () => {
     const controller = new PlayerController(mockPlayer);
 
     await controller.loadChannel(HLS_MASTER_URL);
-    const uriAfterLoad = (mockPlayer.replace as jest.Mock).mock.calls[0][0].uri;
+    const uriAfterLoad = (mockPlayer.replace as jest.Mock).mock.calls[1][0].uri;
 
     controller.setMode('economy');
     expect(mockPlayer.bufferOptions).toMatchObject({
-      preferredForwardBufferDuration: 12,
+      preferredForwardBufferDuration: 20,
+      minBufferForPlayback: 6,
       prioritizeTimeOverSizeThreshold: true,
     });
-    expect((mockPlayer.replace as jest.Mock).mock.calls.length).toBe(1);
+    expect((mockPlayer.replace as jest.Mock).mock.calls.length).toBe(2);
     expect(uriAfterLoad).toBe(HLS_MASTER_URL);
 
     controller.dispose();

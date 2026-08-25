@@ -140,6 +140,7 @@ export default function PlayerScreen() {
     return () => {
       clearPlaybackQuality();
       if (aspectHintTimer.current) clearTimeout(aspectHintTimer.current);
+      void controllerRef.current?.releaseSource('screen-unmount');
       controllerRef.current?.dispose();
       controllerRef.current = null;
     };
@@ -192,6 +193,7 @@ export default function PlayerScreen() {
       if (cancelled) return;
 
       if (ch.kind === 'radio') {
+        await controller.releaseSource('switch-to-radio');
         playRadio(ch);
         setScreenState('playing');
         recordHistory({
@@ -231,6 +233,7 @@ export default function PlayerScreen() {
 
     return () => {
       cancelled = true;
+      void controller.releaseSource('channel-change', { cancelPending: true });
     };
   }, [channelId, playRadio, stopRadio]);
 
@@ -310,6 +313,7 @@ export default function PlayerScreen() {
   }, []);
 
   function handleBack() {
+    void controllerRef.current?.releaseSource('back');
     router.back();
   }
 
