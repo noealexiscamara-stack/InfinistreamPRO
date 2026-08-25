@@ -12,6 +12,7 @@ import { describeImportError, type FriendlyImportErrorInfo } from '@/utils/frien
 import { presentImportSummary } from '@/utils/presentImportSummary';
 import type { XtreamImportProgress } from '@/services/xtream/importXtream';
 import { xtreamImportProgressLabel } from '@/utils/xtreamImportProgress';
+import { createThrottledCallback } from '@/utils/throttle';
 
 export default function AddXtreamScreen() {
   const [name, setName] = useState('');
@@ -29,16 +30,19 @@ export default function AddXtreamScreen() {
     if (!canSubmit || isLoading) return;
     setError(null);
     setProgress({ phase: 'connecting', step: 'live' });
+    const throttledProgress = createThrottledCallback((p: XtreamImportProgress) => setProgress(p), 1000);
     try {
       const result = await addXtream(
         name.trim() || 'Xtream',
         serverUrl.trim(),
         username.trim(),
         password,
-        setProgress
+        throttledProgress
       );
+      throttledProgress.flush();
       presentImportSummary(result.summary, () => router.replace('/(tabs)/home'));
     } catch (err) {
+      throttledProgress.flush();
       setError(describeImportError(err, { url: serverUrl.trim() }));
     } finally {
       setProgress(null);
