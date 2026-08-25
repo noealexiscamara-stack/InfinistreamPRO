@@ -18,6 +18,7 @@ import {
 } from '@/services/channelsRepository';
 import { isXtreamSeriesPlaceholder } from '@/services/persistChannels';
 import { formatDisplayRating } from '@/services/xtream/mapXtreamCatalog';
+import { posterGridColumns, posterTileWidth } from '@/utils/posterGrid';
 
 const PAGE_SIZE = 120;
 const UNPARSED_PREVIEW = 30;
@@ -55,8 +56,8 @@ function xtreamSeriesRows(channels: Channel[]): SeriesRow[] {
 
 export default function SeriesUniverseScreen() {
   const { width } = useWindowDimensions();
-  const numColumns = useMemo(() => (width >= 1200 ? 5 : width >= 900 ? 4 : width >= 600 ? 3 : 2), [width]);
-  const tileWidth = (width - spacing.md * 2 - spacing.sm * (numColumns - 1)) / numColumns;
+  const numColumns = useMemo(() => posterGridColumns(width), [width]);
+  const tileWidth = posterTileWidth(width, numColumns);
 
   const [mode, setMode] = useState<BrowseMode>('categories');
   const [categories, setCategories] = useState<ChannelCategory[]>([]);

@@ -17,6 +17,7 @@ import {
 import { formatDisplayRating } from '@/services/xtream/mapXtreamCatalog';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
 import { useSourcesStore } from '@/store/useSourcesStore';
+import { posterGridColumns, posterTileWidth } from '@/utils/posterGrid';
 
 const PAGE_SIZE = 120;
 
@@ -24,8 +25,8 @@ type BrowseMode = 'categories' | 'grid';
 
 export default function MoviesUniverseScreen() {
   const { width } = useWindowDimensions();
-  const numColumns = useMemo(() => (width >= 1200 ? 5 : width >= 900 ? 4 : width >= 600 ? 3 : 2), [width]);
-  const tileWidth = (width - spacing.md * 2 - spacing.sm * (numColumns - 1)) / numColumns;
+  const numColumns = useMemo(() => posterGridColumns(width), [width]);
+  const tileWidth = posterTileWidth(width, numColumns);
 
   const [mode, setMode] = useState<BrowseMode>('categories');
   const [categories, setCategories] = useState<ChannelCategory[]>([]);
