@@ -6,8 +6,10 @@ import {
   alternateLiveStreamUrl,
   buildStreamVideoSource,
   isLikelyHls,
+  maskStreamCredentials,
 } from '@/services/playback/streamSource';
 import { useStreamSessionStats } from '@/store/useStreamSessionStats';
+import type { ContentKind } from '@infiny-stream/types';
 
 /**
  * Thin glue around expo-video / Media3 (ExoPlayer on Android).
@@ -123,6 +125,7 @@ export class PlayerController {
   private isReconnecting = false;
   private currentStreamUrl = '';
   private lastKnownSafeUrl = '';
+  private currentKind: ContentKind | null = null;
   private hasActiveSource = false;
   private qualityMode: QualityMode = 'auto';
   private disposed = false;
@@ -198,12 +201,13 @@ export class PlayerController {
    * Loads a channel URL into the native player.
    * Always releases any previous source first — one open stream at a time.
    */
-  async loadChannel(directUrl: string): Promise<void> {
+  async loadChannel(directUrl: string, kind?: ContentKind | null): Promise<void> {
     if (this.disposed) return;
     const seq = ++this.loadSeq;
     await this.releaseSource('loadChannel-preempt');
     if (this.disposed || seq !== this.loadSeq) return;
 
+    this.currentKind = kind ?? null;
     this.reconnectAttempt = 0;
     await this.setSource(directUrl, seq);
     if (this.disposed || seq !== this.loadSeq) return;
@@ -238,8 +242,12 @@ export class PlayerController {
     this.sourceSessionId += 1;
     const session = this.sourceSessionId;
     const source = buildStreamVideoSource(url);
+    const masked = maskStreamCredentials(url);
+    const ua = source.headers?.['User-Agent'] ?? '(none)';
 
-    console.log(`[Player] source OPEN session=${session} hls=${isLikelyHls(url)} url=${url.slice(0, 120)}`);
+    console.log(
+      `[Player] source OPEN session=${session} kind=${this.currentKind ?? 'unknown'} hls=${isLikelyHls(url)} ua=${ua} url=${masked}`
+    );
     useStreamSessionStats.getState().recordOpen(url);
 
     this.player.replace(source);
@@ -290,10 +298,11 @@ export class PlayerController {
       }
 
       let nextUrl = this.lastKnownSafeUrl;
-      if (this.reconnectAttempt >= 2) {
+      const allowLiveAlt = this.currentKind == null || this.currentKind === 'live';
+      if (allowLiveAlt && this.reconnectAttempt >= 2) {
         const alt = alternateLiveStreamUrl(nextUrl);
         if (alt) {
-          console.log(`[Player] trying alternate live format url=${alt.slice(0, 120)}`);
+          console.log(`[Player] trying alternate live format url=${maskStreamCredentials(alt)}`);
           nextUrl = alt;
         }
       }

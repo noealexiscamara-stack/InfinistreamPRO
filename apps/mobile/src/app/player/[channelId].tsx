@@ -15,6 +15,7 @@ import { useFavoritesStore } from '@/store/useFavoritesStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useNetworkState } from '@/store/useNetworkStore';
 import { PlayerController } from '@/services/playback/PlayerController';
+import { ensureVodContainerExtension, maskStreamCredentials } from '@/services/playback/streamSource';
 import { isXtreamSeriesPlaceholder } from '@/services/persistChannels';
 import { useRadioPlayback } from '@/services/playback/RadioPlaybackProvider';
 import { connectionLevelLabel } from '@/utils/networkDisplay';
@@ -173,6 +174,13 @@ export default function PlayerScreen() {
       setChannel(ch);
 
       let streamUrl = ch.streamUrl;
+      if (ch.kind === 'movie' || ch.kind === 'series') {
+        streamUrl = ensureVodContainerExtension(streamUrl, ch.containerExtension);
+        console.log(
+          `[Player] VOD resolve kind=${ch.kind} ext=${ch.containerExtension ?? '(none)'} ` +
+            `xtreamStreamId=${ch.xtreamStreamId ?? '-'} url=${maskStreamCredentials(streamUrl)}`
+        );
+      }
       let activeGroup: GroupedChannel | null = null;
       let siblingGroups: GroupedChannel[] = [];
 
@@ -217,7 +225,7 @@ export default function PlayerScreen() {
       }
 
       try {
-        await controller.loadChannel(streamUrl);
+        await controller.loadChannel(streamUrl, ch.kind);
         if (!cancelled) setScreenState('playing');
       } catch {
         if (!cancelled) setScreenState('error');
@@ -320,11 +328,14 @@ export default function PlayerScreen() {
   function handleRetry() {
     if (!channel || !controllerRef.current) return;
     setScreenState('loading');
-    const streamUrl =
+    let streamUrl =
       group && channel.kind !== 'radio'
         ? controllerRef.current.attachChannelGroup(group)
         : channel.streamUrl;
-    controllerRef.current.loadChannel(streamUrl).then(() => setScreenState('playing'));
+    if (channel.kind === 'movie' || channel.kind === 'series') {
+      streamUrl = ensureVodContainerExtension(streamUrl, channel.containerExtension);
+    }
+    controllerRef.current.loadChannel(streamUrl, channel.kind).then(() => setScreenState('playing'));
   }
 
   const singleTapGesture = useMemo(
