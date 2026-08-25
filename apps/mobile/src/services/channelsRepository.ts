@@ -400,7 +400,11 @@ export interface ManagedCategoryRow {
   sourceId: string;
   kind: ContentKind;
   name: string;
+  /** Effective adult flag (manual override wins over auto). */
   isAdult: boolean;
+  adultAuto: boolean;
+  /** null = follow auto; set when user toggled manually. */
+  adultManualOverride: boolean | null;
   channelCount: number;
 }
 
@@ -413,7 +417,12 @@ export async function listManagedCategories(): Promise<ManagedCategoryRow[]> {
     kind: string;
     name: string;
     isAdult: number;
-  }>(`SELECT id, sourceId, kind, name, isAdult FROM categories ORDER BY isAdult DESC, name COLLATE NOCASE ASC`);
+    adultAuto: number;
+    adultManualOverride: number | null;
+  }>(
+    `SELECT id, sourceId, kind, name, isAdult, adultAuto, adultManualOverride
+     FROM categories ORDER BY isAdult DESC, name COLLATE NOCASE ASC`
+  );
 
   const withCounts: ManagedCategoryRow[] = [];
   for (const row of rows) {
@@ -429,6 +438,9 @@ export async function listManagedCategories(): Promise<ManagedCategoryRow[]> {
       kind: row.kind as ContentKind,
       name: row.name,
       isAdult: row.isAdult === 1,
+      adultAuto: row.adultAuto === 1,
+      adultManualOverride:
+        row.adultManualOverride == null ? null : row.adultManualOverride === 1,
       channelCount: countRow?.count ?? 0,
     });
   }
@@ -443,7 +455,10 @@ export async function countAdultCategories(): Promise<number> {
   return row?.count ?? 0;
 }
 
-/** Manual mark / unmark — updates categories row and denormalized channel flags. */
+/**
+ * Manual mark / unmark — stores adultManualOverride so reimport cannot wipe the decision.
+ * isAdult (effective) and channel denormalized flags follow the override.
+ */
 export async function setCategoryAdultFlag(categoryId: string, isAdult: boolean): Promise<void> {
   const db = await getDatabase();
   const cat = await db.getFirstAsync<{ sourceId: string; kind: string; name: string }>(
@@ -452,11 +467,17 @@ export async function setCategoryAdultFlag(categoryId: string, isAdult: boolean)
   );
   if (!cat) return;
 
+  const flag = isAdult ? 1 : 0;
   await db.withTransactionAsync(async () => {
-    await db.runAsync(`UPDATE categories SET isAdult = ? WHERE id = ?`, isAdult ? 1 : 0, categoryId);
+    await db.runAsync(
+      `UPDATE categories SET adultManualOverride = ?, isAdult = ? WHERE id = ?`,
+      flag,
+      flag,
+      categoryId
+    );
     await db.runAsync(
       `UPDATE channels SET isAdult = ? WHERE sourceId = ? AND kind = ? AND category = ?`,
-      isAdult ? 1 : 0,
+      flag,
       cat.sourceId,
       cat.kind,
       cat.name

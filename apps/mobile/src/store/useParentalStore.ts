@@ -35,6 +35,14 @@ export const useParentalStore = create<ParentalState>((set, get) => ({
   hydrate: async () => {
     const configured = await hasParentalPin();
     const lockout = await readLockout();
+    const remaining = lockoutRemainingMs(lockout);
+    if (remaining > 0) {
+      console.log(
+        `[Parental] lockout still active on boot remainingMs=${remaining} failedInSeries=${lockout.failedInSeries} lockoutSeries=${lockout.lockoutSeries}`
+      );
+    } else if (lockout.failedInSeries > 0) {
+      console.log(`[Parental] restoring failed attempt counter=${lockout.failedInSeries}`);
+    }
     set({
       pinConfigured: configured,
       unlocked: false,

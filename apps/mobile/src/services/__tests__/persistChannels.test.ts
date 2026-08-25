@@ -8,6 +8,7 @@ import { getDatabase } from '@/utils/db';
 
 class MemoryChannelsDb {
   channels = new Map<string, Record<string, unknown>>();
+  categories = new Map<string, Record<string, unknown>>();
   sourceUpdates: Array<{ channelCount: number; sourceId: string }> = [];
   deletedSourceIds: string[] = [];
   runAsyncCount = 0;
@@ -20,16 +21,28 @@ class MemoryChannelsDb {
     return null;
   }
 
+  async getAllAsync<T>(sql: string, ...params: unknown[]): Promise<T[]> {
+    if (sql.includes('FROM categories') && sql.includes('adultManualOverride')) {
+      const sourceId = params[0];
+      return [...this.categories.values()].filter(
+        (c) => (sourceId == null || c.sourceId === sourceId) && c.adultManualOverride != null
+      ) as T[];
+    }
+    return [];
+  }
+
   async execAsync(sql: string): Promise<void> {
     this.execCalls.push(sql);
   }
 
   async withTransactionAsync(task: () => Promise<void>): Promise<void> {
     const snapshot = new Map(this.channels);
+    const catSnapshot = new Map(this.categories);
     try {
       await task();
     } catch (error) {
       this.channels = snapshot;
+      this.categories = catSnapshot;
       throw error;
     }
   }
@@ -48,8 +61,28 @@ class MemoryChannelsDb {
       return;
     }
     if (sql.startsWith('DELETE FROM xtream_series_cache')) return;
-    if (sql.startsWith('DELETE FROM categories')) return;
-    if (sql.startsWith('INSERT OR REPLACE INTO categories')) return;
+    if (sql.startsWith('DELETE FROM categories')) {
+      const sourceId = String(params[0]);
+      for (const [id, row] of [...this.categories.entries()]) {
+        if (row.sourceId === sourceId) this.categories.delete(id);
+      }
+      return;
+    }
+    if (sql.startsWith('INSERT OR REPLACE INTO categories')) {
+      // id, sourceId, kind, name, adultAuto, adultManualOverride, isAdult
+      const id = String(params[0]);
+      this.categories.set(id, {
+        id,
+        sourceId: params[1],
+        kind: params[2],
+        name: params[3],
+        adultAuto: params[4],
+        adultManualOverride: params[5],
+        isAdult: params[6],
+      });
+      return;
+    }
+    if (sql.startsWith('UPDATE channels SET isAdult')) return;
     if (sql.startsWith('UPDATE sources SET channelCount')) {
       this.sourceUpdates.push({ channelCount: Number(params[0]), sourceId: String(params[3]) });
       return;
@@ -116,6 +149,7 @@ describe('replaceSourceChannels', () => {
       withTransactionAsync: db.withTransactionAsync.bind(db),
       execAsync: db.execAsync.bind(db),
       getFirstAsync: db.getFirstAsync.bind(db),
+      getAllAsync: db.getAllAsync.bind(db),
     };
 
     (getDatabase as jest.Mock).mockResolvedValue(failingDb);
@@ -123,6 +157,39 @@ describe('replaceSourceChannels', () => {
     await expect(replaceSourceChannels('src-fail', makeChannels(5_000))).rejects.toThrow('simulated sqlite failure');
     expect(db.channels.size).toBe(0);
     expect(db.sourceUpdates).toHaveLength(0);
+  });
+
+  it('keeps manual adult override across reimport (auto detection does not wipe it)', async () => {
+    const db = new MemoryChannelsDb();
+    (getDatabase as jest.Mock).mockResolvedValue(db);
+
+    const channels: PersistableChannel[] = [
+      {
+        name: 'Film Action',
+        streamUrl: 'http://example.com/vod/1.mp4',
+        sortIndex: 0,
+        kind: 'movie',
+        category: 'FR | ACTION',
+      },
+    ];
+
+    await replaceSourceChannels('src-adult', channels, { sourceType: 'xtream' });
+    const cat = [...db.categories.values()].find((c) => c.name === 'FR | ACTION');
+    expect(cat).toBeTruthy();
+    expect(cat!.adultAuto).toBe(0);
+    expect(cat!.isAdult).toBe(0);
+
+    // User marks category adult manually (as setCategoryAdultFlag would).
+    cat!.adultManualOverride = 1;
+    cat!.isAdult = 1;
+
+    // Reimport same catalog — auto still says not adult.
+    await replaceSourceChannels('src-adult', channels, { sourceType: 'xtream' });
+    const after = [...db.categories.values()].find((c) => c.name === 'FR | ACTION');
+    expect(after).toBeTruthy();
+    expect(after!.adultAuto).toBe(0);
+    expect(after!.adultManualOverride).toBe(1);
+    expect(after!.isAdult).toBe(1);
   });
 
   it('throttles progress to at most ~1 callback per second (plus final)', async () => {

@@ -93,7 +93,7 @@ export async function readLockout(): Promise<ParentalLockoutRecord> {
   }
 }
 
-async function writeLockout(record: ParentalLockoutRecord): Promise<void> {
+export async function writeLockout(record: ParentalLockoutRecord): Promise<void> {
   await SecureStore.setItemAsync(LOCKOUT_KEY, JSON.stringify(record));
 }
 

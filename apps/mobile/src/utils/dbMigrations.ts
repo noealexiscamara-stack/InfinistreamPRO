@@ -3,7 +3,7 @@ import { classifyEntry, classifyM3uEntry } from '@infiny-stream/shared';
 import { categoryRowId, isAdultCategoryName } from '@/utils/adultCategory';
 
 /** Bump when adding a new incremental migration below. */
-export const LATEST_SCHEMA_VERSION = 5;
+export const LATEST_SCHEMA_VERSION = 6;
 
 export interface MigrationRunOptions {
   /** Test hook — simulates the app being killed mid-backfill. */
@@ -277,6 +277,42 @@ export async function migrateV5_parentalCategories(db: MigrationDb): Promise<voi
   }
 }
 
+/**
+ * v5 → v6 : split auto detection vs manual parental override.
+ * adultManualOverride NULL = follow auto; 0/1 = force; isAdult = effective.
+ */
+export async function migrateV6_adultManualOverride(db: MigrationDb): Promise<void> {
+  if (!(await columnExists(db, 'categories', 'adultAuto'))) {
+    await db.execAsync(`ALTER TABLE categories ADD COLUMN adultAuto INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!(await columnExists(db, 'categories', 'adultManualOverride'))) {
+    await db.execAsync(`ALTER TABLE categories ADD COLUMN adultManualOverride INTEGER`);
+  }
+
+  // Preserve prior manual toggles: recompute auto from name; if isAdult ≠ auto, store override.
+  const cats = await db.getAllAsync<{ id: string; name: string; isAdult: number }>(
+    `SELECT id, name, isAdult FROM categories`
+  );
+  const stmt = await db.prepareAsync(
+    `UPDATE categories SET adultAuto = $auto, adultManualOverride = $override, isAdult = $effective WHERE id = $id`
+  );
+  try {
+    for (const cat of cats) {
+      const adultAuto = isAdultCategoryName(cat.name) ? 1 : 0;
+      const effective = cat.isAdult ? 1 : 0;
+      const override = adultAuto === effective ? null : effective;
+      await stmt.executeAsync({
+        $id: cat.id,
+        $auto: adultAuto,
+        $override: override,
+        $effective: effective,
+      });
+    }
+  } finally {
+    await stmt.finalizeAsync();
+  }
+}
+
 async function runMigrationStep(
   db: MigrationDb,
   targetVersion: number,
@@ -314,6 +350,11 @@ export async function runSchemaMigrations(db: MigrationDb, options?: MigrationRu
   if (version < 5) {
     await runMigrationStep(db, 5, () => migrateV5_parentalCategories(db));
     version = 5;
+  }
+
+  if (version < 6) {
+    await runMigrationStep(db, 6, () => migrateV6_adultManualOverride(db));
+    version = 6;
   }
 
   if (version > LATEST_SCHEMA_VERSION) {

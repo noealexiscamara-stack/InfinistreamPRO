@@ -203,6 +203,21 @@ export async function replaceSourceChannels(
   const saveTotal = tagged.length;
   const reportProgress = createThrottledProgress(options?.onProgress);
 
+  // Preserve manual parental overrides across wipe/reimport (keyed by kind+name).
+  const priorOverrides = await db.getAllAsync<{
+    kind: string;
+    name: string;
+    adultManualOverride: number | null;
+  }>(
+    `SELECT kind, name, adultManualOverride FROM categories
+     WHERE sourceId = ? AND adultManualOverride IS NOT NULL`,
+    sourceId
+  );
+  const overrideByKey = new Map<string, number>();
+  for (const row of priorOverrides) {
+    overrideByKey.set(`${row.kind}::${row.name}`, row.adultManualOverride!);
+  }
+
   const startedAt = Date.now();
 
   // Durability can wait until commit — sync OFF + WAL cuts fsync cost during bulk write.
@@ -251,8 +266,8 @@ export async function replaceSourceChannels(
         }
       }
 
-      // Upsert category rows (parental isAdult lives here + denormalized on channels).
-      const catMap = new Map<string, { kind: ContentKind; name: string; isAdult: boolean }>();
+      // Rebuild categories: adultAuto from detection; manual override wins for isAdult.
+      const catMap = new Map<string, { kind: ContentKind; name: string; adultAuto: boolean }>();
       for (const ch of tagged) {
         if (!ch.category?.trim()) continue;
         const key = `${ch.kind}::${ch.category}`;
@@ -260,17 +275,39 @@ export async function replaceSourceChannels(
         catMap.set(key, {
           kind: ch.kind,
           name: ch.category,
-          isAdult: Boolean(prev?.isAdult || ch.isAdult),
+          adultAuto: Boolean(prev?.adultAuto || ch.isAdult),
         });
       }
+
+      const channelAdultUpdates: Array<{ kind: ContentKind; name: string; isAdult: number }> = [];
       for (const cat of catMap.values()) {
+        const key = `${cat.kind}::${cat.name}`;
+        const adultAuto = cat.adultAuto ? 1 : 0;
+        const override = overrideByKey.has(key) ? overrideByKey.get(key)! : null;
+        const isAdult = override != null ? override : adultAuto;
         await db.runAsync(
-          `INSERT OR REPLACE INTO categories (id, sourceId, kind, name, isAdult) VALUES (?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO categories (id, sourceId, kind, name, adultAuto, adultManualOverride, isAdult)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
           categoryRowId(sourceId, cat.kind, cat.name),
           sourceId,
           cat.kind,
           cat.name,
-          cat.isAdult ? 1 : 0
+          adultAuto,
+          override,
+          isAdult
+        );
+        // Channel rows were inserted with auto-only isAdult — realign when override differs.
+        if (override != null && override !== adultAuto) {
+          channelAdultUpdates.push({ kind: cat.kind, name: cat.name, isAdult });
+        }
+      }
+      for (const u of channelAdultUpdates) {
+        await db.runAsync(
+          `UPDATE channels SET isAdult = ? WHERE sourceId = ? AND kind = ? AND category = ?`,
+          u.isAdult,
+          sourceId,
+          u.kind,
+          u.name
         );
       }
 
@@ -299,7 +336,9 @@ export async function replaceSourceChannels(
   console.log(
     `[Import] SQLite write ${imported} rows in ${elapsedSec.toFixed(2)}s → ${rowsPerSecond} rows/s (${nativeInsertCalls} native calls)`
   );
-  console.log(`[Import] adult categories marked=${adultCategoryCount}`);
+  console.log(
+    `[Import] adult categories auto=${adultCategoryCount} manualOverridesKept=${overrideByKey.size}`
+  );
 
   return { imported, duplicatesRemoved, rejected, rowsPerSecond, nativeInsertCalls, adultCategoryCount };
 }
