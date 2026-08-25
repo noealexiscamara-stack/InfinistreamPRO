@@ -1,8 +1,9 @@
 import type * as SQLite from 'expo-sqlite';
 import { classifyEntry, classifyM3uEntry } from '@infiny-stream/shared';
+import { categoryRowId, isAdultCategoryName } from '@/utils/adultCategory';
 
 /** Bump when adding a new incremental migration below. */
-export const LATEST_SCHEMA_VERSION = 4;
+export const LATEST_SCHEMA_VERSION = 5;
 
 export interface MigrationRunOptions {
   /** Test hook — simulates the app being killed mid-backfill. */
@@ -210,6 +211,72 @@ export async function migrateV4_xtreamCategoryId(db: MigrationDb): Promise<void>
   );
 }
 
+/**
+ * v4 → v5 : parental control — isAdult on channels + categories table.
+ * Adult flag is computed at import from category_name; manual overrides update both.
+ */
+export async function migrateV5_parentalCategories(db: MigrationDb): Promise<void> {
+  if (!(await columnExists(db, 'channels', 'isAdult'))) {
+    await db.execAsync(`ALTER TABLE channels ADD COLUMN isAdult INTEGER NOT NULL DEFAULT 0`);
+  }
+  await db.execAsync(
+    `CREATE TABLE IF NOT EXISTS categories (
+      id TEXT PRIMARY KEY NOT NULL,
+      sourceId TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      name TEXT NOT NULL,
+      isAdult INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(sourceId, kind, name),
+      FOREIGN KEY (sourceId) REFERENCES sources(id) ON DELETE CASCADE
+    )`
+  );
+  await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_channels_is_adult ON channels(isAdult)`);
+  await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_categories_adult ON categories(isAdult)`);
+
+  const rows = await db.getAllAsync<{ id: string; category: string | null; groupTitle: string | null }>(
+    `SELECT id, category, groupTitle FROM channels`
+  );
+  const markAdult = await db.prepareAsync(`UPDATE channels SET isAdult = 1 WHERE id = $id`);
+  try {
+    for (const row of rows) {
+      if (isAdultCategoryName(row.category) || isAdultCategoryName(row.groupTitle)) {
+        await markAdult.executeAsync({ $id: row.id });
+      }
+    }
+  } finally {
+    await markAdult.finalizeAsync();
+  }
+
+  const cats = await db.getAllAsync<{
+    sourceId: string;
+    kind: string | null;
+    category: string | null;
+    isAdult: number;
+  }>(
+    `SELECT sourceId, kind, category, MAX(isAdult) as isAdult FROM channels
+     WHERE category IS NOT NULL AND TRIM(category) != ''
+     GROUP BY sourceId, kind, category`
+  );
+  const upsert = await db.prepareAsync(
+    `INSERT OR REPLACE INTO categories (id, sourceId, kind, name, isAdult)
+     VALUES ($id, $sourceId, $kind, $name, $isAdult)`
+  );
+  try {
+    for (const cat of cats) {
+      if (!cat.category || !cat.kind) continue;
+      await upsert.executeAsync({
+        $id: categoryRowId(cat.sourceId, cat.kind, cat.category),
+        $sourceId: cat.sourceId,
+        $kind: cat.kind,
+        $name: cat.category,
+        $isAdult: cat.isAdult ? 1 : 0,
+      });
+    }
+  } finally {
+    await upsert.finalizeAsync();
+  }
+}
+
 async function runMigrationStep(
   db: MigrationDb,
   targetVersion: number,
@@ -242,6 +309,11 @@ export async function runSchemaMigrations(db: MigrationDb, options?: MigrationRu
   if (version < 4) {
     await runMigrationStep(db, 4, () => migrateV4_xtreamCategoryId(db));
     version = 4;
+  }
+
+  if (version < 5) {
+    await runMigrationStep(db, 5, () => migrateV5_parentalCategories(db));
+    version = 5;
   }
 
   if (version > LATEST_SCHEMA_VERSION) {

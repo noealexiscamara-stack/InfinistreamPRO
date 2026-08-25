@@ -14,6 +14,7 @@ import { useHistoryStore } from '@/store/useHistoryStore';
 import { useNetworkMonitorBootstrap } from '@/store/useNetworkStore';
 import { useAuthStore, handleUnauthorizedSession } from '@/store/useAuthStore';
 import { useConfigStore } from '@/store/useConfigStore';
+import { useParentalStore } from '@/store/useParentalStore';
 import { setUnauthorizedHandler } from '@/services/api/unauthorizedHandler';
 import { RadioPlaybackProvider } from '@/services/playback/RadioPlaybackProvider';
 
@@ -58,6 +59,7 @@ async function bootstrapApp(): Promise<void> {
     runBootStep('Historique', () => useHistoryStore.getState().load()),
     runBootStep('Configuration', () => useConfigStore.getState().refresh()),
     runBootStep('Session', () => useAuthStore.getState().hydrate()),
+    runBootStep('Contrôle parental', () => useParentalStore.getState().hydrate()),
   ]);
 }
 
@@ -199,6 +201,7 @@ export default function RootLayout() {
           <Stack.Screen name="universe/series/[seriesId]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="player/[channelId]" options={{ animation: 'fade', presentation: 'fullScreenModal' }} />
           <Stack.Screen name="diagnostics/playback" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="settings/parental" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="add-source/index" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
           <Stack.Screen name="add-source/m3u-url" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
           <Stack.Screen name="add-source/m3u-file" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />

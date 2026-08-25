@@ -9,14 +9,18 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { listFavoriteChannels } from '@/services/favoritesHistoryRepository';
 import { groupedFromChannels, groupFavoriteChannel } from '@/services/channelGroups';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
+import { useParentalStore } from '@/store/useParentalStore';
 
 export default function FavoritesScreen() {
   const [groups, setGroups] = useState<GroupedChannel[]>([]);
   const toggleFavorite = useFavoritesStore((s) => s.toggle);
+  const unlocked = useParentalStore((s) => s.unlocked);
+  const pinConfigured = useParentalStore((s) => s.pinConfigured);
+  const includeAdult = pinConfigured && unlocked;
 
   const reload = useCallback(() => {
-    listFavoriteChannels(500).then((rows) => setGroups(groupedFromChannels(rows)));
-  }, []);
+    listFavoriteChannels(500, includeAdult).then((rows) => setGroups(groupedFromChannels(rows)));
+  }, [includeAdult]);
 
   useFocusEffect(
     useCallback(() => {

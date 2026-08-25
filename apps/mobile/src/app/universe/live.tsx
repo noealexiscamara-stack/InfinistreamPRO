@@ -12,6 +12,7 @@ import { LiveCategorySidebar, categoriesToSidebarItems } from '@/components/univ
 import { getCategories, getAllChannelsByKind, getChannels, countChannels } from '@/services/channelsRepository';
 import { groupedFromChannels, groupFavoriteChannel } from '@/services/channelGroups';
 import { useSourcesStore } from '@/store/useSourcesStore';
+import { useParentalStore } from '@/store/useParentalStore';
 
 const PAGE_SIZE = 120;
 /** Fixed 6 columns in landscape phone — requirement vs Smarters density. */
@@ -19,6 +20,9 @@ const TARGET_COLUMNS = 6;
 
 export default function LiveUniverseScreen() {
   const sources = useSourcesStore((s) => s.sources);
+  const unlocked = useParentalStore((s) => s.unlocked);
+  const pinConfigured = useParentalStore((s) => s.pinConfigured);
+  const includeAdult = pinConfigured && unlocked;
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -55,8 +59,8 @@ export default function LiveUniverseScreen() {
       setCategories([]);
       return;
     }
-    getCategories(primarySourceId, 'live').then(setCategories);
-  }, [primarySourceId]);
+    getCategories(primarySourceId, 'live', includeAdult).then(setCategories);
+  }, [primarySourceId, includeAdult]);
 
   const fetchRows = useCallback(
     async (offset: number) => {
@@ -66,11 +70,12 @@ export default function LiveUniverseScreen() {
           category: selectedCategoryName,
           limit: PAGE_SIZE,
           offset,
+          includeAdult,
         });
       }
-      return getAllChannelsByKind('live', PAGE_SIZE, offset);
+      return getAllChannelsByKind('live', PAGE_SIZE, offset, includeAdult);
     },
-    [primarySourceId, selectedCategoryName]
+    [primarySourceId, selectedCategoryName, includeAdult]
   );
 
   const loadInitial = useCallback(async () => {
@@ -82,12 +87,14 @@ export default function LiveUniverseScreen() {
       setChannels(groupedFromChannels(rows));
       setHasMore(rows.length === PAGE_SIZE);
       if (!selectedCategoryName) {
-        setTotalLiveCount(await countChannels({ kind: 'live', sourceId: primarySourceId }));
+        setTotalLiveCount(
+          await countChannels({ kind: 'live', sourceId: primarySourceId, includeAdult })
+        );
       }
     } finally {
       setLoading(false);
     }
-  }, [fetchRows, primarySourceId, selectedCategoryName]);
+  }, [fetchRows, primarySourceId, selectedCategoryName, includeAdult]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;

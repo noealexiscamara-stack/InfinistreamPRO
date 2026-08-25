@@ -6,17 +6,32 @@ export interface ChannelQueryOptions {
   kind?: ContentKind;
   limit?: number;
   offset?: number;
+  /** When false (default), adult-flagged rows are excluded. */
+  includeAdult?: boolean;
+}
+
+/** Adult content is hidden unless explicitly unlocked. */
+function adultSql(includeAdult: boolean | undefined, alias?: string): string {
+  if (includeAdult) return '1=1';
+  const col = alias ? `${alias}.isAdult` : 'isAdult';
+  return `(${col} IS NULL OR ${col} = 0)`;
 }
 
 export async function countChannels(
-  options: { sourceId?: string; kind?: ContentKind; category?: string } = {}
+  options: {
+    sourceId?: string;
+    kind?: ContentKind;
+    category?: string;
+    includeAdult?: boolean;
+  } = {}
 ): Promise<number> {
   const db = await getDatabase();
-  const { sourceId, kind, category } = options;
+  const { sourceId, kind, category, includeAdult } = options;
+  const adult = adultSql(includeAdult);
 
   if (sourceId && category && kind) {
     const row = await db.getFirstAsync<{ count: number }>(
-      `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND category = ? AND kind = ?`,
+      `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND category = ? AND kind = ? AND ${adult}`,
       sourceId,
       category,
       kind
@@ -25,7 +40,7 @@ export async function countChannels(
   }
   if (sourceId && category) {
     const row = await db.getFirstAsync<{ count: number }>(
-      `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND category = ?`,
+      `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND category = ? AND ${adult}`,
       sourceId,
       category
     );
@@ -33,7 +48,7 @@ export async function countChannels(
   }
   if (sourceId && kind) {
     const row = await db.getFirstAsync<{ count: number }>(
-      `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND kind = ?`,
+      `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND kind = ? AND ${adult}`,
       sourceId,
       kind
     );
@@ -41,35 +56,44 @@ export async function countChannels(
   }
   if (sourceId) {
     const row = await db.getFirstAsync<{ count: number }>(
-      `SELECT COUNT(*) as count FROM channels WHERE sourceId = ?`,
+      `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND ${adult}`,
       sourceId
     );
     return row?.count ?? 0;
   }
   if (kind) {
     const row = await db.getFirstAsync<{ count: number }>(
-      `SELECT COUNT(*) as count FROM channels WHERE kind = ?`,
+      `SELECT COUNT(*) as count FROM channels WHERE kind = ? AND ${adult}`,
       kind
     );
     return row?.count ?? 0;
   }
 
-  const row = await db.getFirstAsync<{ count: number }>(`SELECT COUNT(*) as count FROM channels`);
+  const row = await db.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) as count FROM channels WHERE ${adult}`
+  );
   return row?.count ?? 0;
 }
 
-export async function getKindCounts(sourceId?: string): Promise<Record<ContentKind, number>> {
+export async function getKindCounts(
+  sourceId?: string,
+  includeAdult = false
+): Promise<Record<ContentKind, number>> {
   const db = await getDatabase();
   const empty: Record<ContentKind, number> = { live: 0, movie: 0, series: 0, radio: 0 };
+  const adult = adultSql(includeAdult);
 
   const countKind = async (kind: ContentKind): Promise<number> => {
     const row = sourceId
       ? await db.getFirstAsync<{ count: number }>(
-          `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND kind = ?`,
+          `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND kind = ? AND ${adult}`,
           sourceId,
           kind
         )
-      : await db.getFirstAsync<{ count: number }>(`SELECT COUNT(*) as count FROM channels WHERE kind = ?`, kind);
+      : await db.getFirstAsync<{ count: number }>(
+          `SELECT COUNT(*) as count FROM channels WHERE kind = ? AND ${adult}`,
+          kind
+        );
     return row?.count ?? 0;
   };
 
@@ -79,48 +103,69 @@ export async function getKindCounts(sourceId?: string): Promise<Record<ContentKi
 
   const xtreamHeaderRow = sourceId
     ? await db.getFirstAsync<{ count: number }>(
-        `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND kind = 'series' AND xtreamSeriesId IS NOT NULL AND xtreamEpisodeId IS NULL`,
+        `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND kind = 'series' AND xtreamSeriesId IS NOT NULL AND xtreamEpisodeId IS NULL AND ${adult}`,
         sourceId
       )
     : await db.getFirstAsync<{ count: number }>(
-        `SELECT COUNT(*) as count FROM channels WHERE kind = 'series' AND xtreamSeriesId IS NOT NULL AND xtreamEpisodeId IS NULL`
+        `SELECT COUNT(*) as count FROM channels WHERE kind = 'series' AND xtreamSeriesId IS NOT NULL AND xtreamEpisodeId IS NULL AND ${adult}`
       );
 
   const m3uSeriesRow = sourceId
     ? await db.getFirstAsync<{ count: number }>(
-        `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND kind = 'series' AND xtreamSeriesId IS NULL AND xtreamEpisodeId IS NULL AND streamUrl NOT LIKE 'infiny-stream://%'`,
+        `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND kind = 'series' AND xtreamSeriesId IS NULL AND xtreamEpisodeId IS NULL AND streamUrl NOT LIKE 'infiny-stream://%' AND ${adult}`,
         sourceId
       )
     : await db.getFirstAsync<{ count: number }>(
-        `SELECT COUNT(*) as count FROM channels WHERE kind = 'series' AND xtreamSeriesId IS NULL AND xtreamEpisodeId IS NULL AND streamUrl NOT LIKE 'infiny-stream://%'`
+        `SELECT COUNT(*) as count FROM channels WHERE kind = 'series' AND xtreamSeriesId IS NULL AND xtreamEpisodeId IS NULL AND streamUrl NOT LIKE 'infiny-stream://%' AND ${adult}`
       );
 
   empty.series = (xtreamHeaderRow?.count ?? 0) + (m3uSeriesRow?.count ?? 0);
   return empty;
 }
 
-export async function getCategories(sourceId: string, kind?: ContentKind): Promise<ChannelCategory[]> {
+export async function getCategories(
+  sourceId: string,
+  kind?: ContentKind,
+  includeAdult = false
+): Promise<ChannelCategory[]> {
   const db = await getDatabase();
+  const adult = adultSql(includeAdult);
   const rows = kind
-    ? await db.getAllAsync<{ category: string | null; count: number }>(
-        `SELECT category, COUNT(*) as count FROM channels WHERE sourceId = ? AND kind = ? GROUP BY category ORDER BY category COLLATE NOCASE ASC`,
+    ? await db.getAllAsync<{ category: string | null; count: number; isAdult: number }>(
+        `SELECT category, COUNT(*) as count, MAX(isAdult) as isAdult FROM channels
+         WHERE sourceId = ? AND kind = ? AND ${adult}
+         GROUP BY category ORDER BY category COLLATE NOCASE ASC`,
         sourceId,
         kind
       )
-    : await db.getAllAsync<{ category: string | null; count: number }>(
-        `SELECT category, COUNT(*) as count FROM channels WHERE sourceId = ? GROUP BY category ORDER BY category COLLATE NOCASE ASC`,
+    : await db.getAllAsync<{ category: string | null; count: number; isAdult: number }>(
+        `SELECT category, COUNT(*) as count, MAX(isAdult) as isAdult FROM channels
+         WHERE sourceId = ? AND ${adult}
+         GROUP BY category ORDER BY category COLLATE NOCASE ASC`,
         sourceId
       );
   return rows
     .filter((r) => r.category)
-    .map((r) => ({ id: `${sourceId}::${r.category}`, sourceId, name: r.category as string, channelCount: r.count }));
+    .map((r) => ({
+      id: `${sourceId}::${r.category}`,
+      sourceId,
+      name: r.category as string,
+      channelCount: r.count,
+      isAdult: r.isAdult === 1,
+      kind,
+    }));
 }
 
 /** Categories aggregated across all sources for a content kind (Films / Séries browser). */
-export async function getAllCategoriesByKind(kind: ContentKind): Promise<ChannelCategory[]> {
+export async function getAllCategoriesByKind(
+  kind: ContentKind,
+  includeAdult = false
+): Promise<ChannelCategory[]> {
   const db = await getDatabase();
-  const rows = await db.getAllAsync<{ category: string | null; count: number }>(
-    `SELECT category, COUNT(*) as count FROM channels WHERE kind = ? AND category IS NOT NULL AND TRIM(category) != ''
+  const adult = adultSql(includeAdult);
+  const rows = await db.getAllAsync<{ category: string | null; count: number; isAdult: number }>(
+    `SELECT category, COUNT(*) as count, MAX(isAdult) as isAdult FROM channels
+     WHERE kind = ? AND category IS NOT NULL AND TRIM(category) != '' AND ${adult}
      GROUP BY category ORDER BY category COLLATE NOCASE ASC`,
     kind
   );
@@ -131,6 +176,8 @@ export async function getAllCategoriesByKind(kind: ContentKind): Promise<Channel
       sourceId: '',
       name: r.category as string,
       channelCount: r.count,
+      isAdult: r.isAdult === 1,
+      kind,
     }));
 }
 
@@ -138,28 +185,31 @@ export async function getAllChannelsByKindAndCategory(
   kind: ContentKind,
   category: string | null,
   limit = 120,
-  offset = 0
+  offset = 0,
+  includeAdult = false
 ): Promise<Channel[]> {
   const db = await getDatabase();
+  const adult = adultSql(includeAdult);
   if (category) {
     return db.getAllAsync<Channel>(
-      `SELECT * FROM channels WHERE kind = ? AND category = ? ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
+      `SELECT * FROM channels WHERE kind = ? AND category = ? AND ${adult} ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
       kind,
       category,
       limit,
       offset
     );
   }
-  return getAllChannelsByKind(kind, limit, offset);
+  return getAllChannelsByKind(kind, limit, offset, includeAdult);
 }
 
 export async function getChannels(sourceId: string, options: ChannelQueryOptions = {}): Promise<Channel[]> {
   const db = await getDatabase();
-  const { category, kind, limit = 500, offset = 0 } = options;
+  const { category, kind, limit = 500, offset = 0, includeAdult } = options;
+  const adult = adultSql(includeAdult);
 
   if (category && kind) {
     return db.getAllAsync<Channel>(
-      `SELECT * FROM channels WHERE sourceId = ? AND category = ? AND kind = ? ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
+      `SELECT * FROM channels WHERE sourceId = ? AND category = ? AND kind = ? AND ${adult} ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
       sourceId,
       category,
       kind,
@@ -169,7 +219,7 @@ export async function getChannels(sourceId: string, options: ChannelQueryOptions
   }
   if (category) {
     return db.getAllAsync<Channel>(
-      `SELECT * FROM channels WHERE sourceId = ? AND category = ? ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
+      `SELECT * FROM channels WHERE sourceId = ? AND category = ? AND ${adult} ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
       sourceId,
       category,
       limit,
@@ -178,7 +228,7 @@ export async function getChannels(sourceId: string, options: ChannelQueryOptions
   }
   if (kind) {
     return db.getAllAsync<Channel>(
-      `SELECT * FROM channels WHERE sourceId = ? AND kind = ? ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
+      `SELECT * FROM channels WHERE sourceId = ? AND kind = ? AND ${adult} ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
       sourceId,
       kind,
       limit,
@@ -187,30 +237,42 @@ export async function getChannels(sourceId: string, options: ChannelQueryOptions
   }
 
   return db.getAllAsync<Channel>(
-    `SELECT * FROM channels WHERE sourceId = ? ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
+    `SELECT * FROM channels WHERE sourceId = ? AND ${adult} ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
     sourceId,
     limit,
     offset
   );
 }
 
-export async function getAllChannelsByKind(kind: ContentKind, limit = 120, offset = 0): Promise<Channel[]> {
+export async function getAllChannelsByKind(
+  kind: ContentKind,
+  limit = 120,
+  offset = 0,
+  includeAdult = false
+): Promise<Channel[]> {
   const db = await getDatabase();
+  const adult = adultSql(includeAdult);
   return db.getAllAsync<Channel>(
-    `SELECT * FROM channels WHERE kind = ? ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
+    `SELECT * FROM channels WHERE kind = ? AND ${adult} ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
     kind,
     limit,
     offset
   );
 }
 
-export async function searchChannels(sourceId: string | null, query: string, limit = 200): Promise<Channel[]> {
+export async function searchChannels(
+  sourceId: string | null,
+  query: string,
+  limit = 200,
+  includeAdult = false
+): Promise<Channel[]> {
   const db = await getDatabase();
   const like = `%${query.trim()}%`;
+  const adult = adultSql(includeAdult);
 
   if (sourceId) {
     return db.getAllAsync<Channel>(
-      `SELECT * FROM channels WHERE sourceId = ? AND (name LIKE ? COLLATE NOCASE OR groupTitle LIKE ? COLLATE NOCASE OR country LIKE ? COLLATE NOCASE)
+      `SELECT * FROM channels WHERE sourceId = ? AND ${adult} AND (name LIKE ? COLLATE NOCASE OR groupTitle LIKE ? COLLATE NOCASE OR country LIKE ? COLLATE NOCASE)
        ORDER BY name COLLATE NOCASE ASC LIMIT ?`,
       sourceId,
       like,
@@ -221,7 +283,7 @@ export async function searchChannels(sourceId: string | null, query: string, lim
   }
 
   return db.getAllAsync<Channel>(
-    `SELECT * FROM channels WHERE (name LIKE ? COLLATE NOCASE OR groupTitle LIKE ? COLLATE NOCASE OR country LIKE ? COLLATE NOCASE)
+    `SELECT * FROM channels WHERE ${adult} AND (name LIKE ? COLLATE NOCASE OR groupTitle LIKE ? COLLATE NOCASE OR country LIKE ? COLLATE NOCASE)
      ORDER BY name COLLATE NOCASE ASC LIMIT ?`,
     like,
     like,
@@ -247,32 +309,35 @@ export async function getChannelByXtreamSeriesId(sourceId: string, xtreamSeriesI
 export async function getXtreamSeriesCatalog(
   limit = 120,
   offset = 0,
-  category?: string | null
+  category?: string | null,
+  includeAdult = false
 ): Promise<Channel[]> {
   const db = await getDatabase();
+  const adult = adultSql(includeAdult);
   if (category) {
     return db.getAllAsync<Channel>(
       `SELECT * FROM channels WHERE kind = 'series' AND xtreamSeriesId IS NOT NULL AND xtreamEpisodeId IS NULL
-       AND category = ? ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
+       AND category = ? AND ${adult} ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
       category,
       limit,
       offset
     );
   }
   return db.getAllAsync<Channel>(
-    `SELECT * FROM channels WHERE kind = 'series' AND xtreamSeriesId IS NOT NULL AND xtreamEpisodeId IS NULL ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
+    `SELECT * FROM channels WHERE kind = 'series' AND xtreamSeriesId IS NOT NULL AND xtreamEpisodeId IS NULL AND ${adult} ORDER BY sortIndex ASC LIMIT ? OFFSET ?`,
     limit,
     offset
   );
 }
 
 /** Series categories only for Xtream catalog headers (excludes M3U episode rows). */
-export async function getXtreamSeriesCategories(): Promise<ChannelCategory[]> {
+export async function getXtreamSeriesCategories(includeAdult = false): Promise<ChannelCategory[]> {
   const db = await getDatabase();
-  const rows = await db.getAllAsync<{ category: string | null; count: number }>(
-    `SELECT category, COUNT(*) as count FROM channels
+  const adult = adultSql(includeAdult);
+  const rows = await db.getAllAsync<{ category: string | null; count: number; isAdult: number }>(
+    `SELECT category, COUNT(*) as count, MAX(isAdult) as isAdult FROM channels
      WHERE kind = 'series' AND xtreamSeriesId IS NOT NULL AND xtreamEpisodeId IS NULL
-       AND category IS NOT NULL AND TRIM(category) != ''
+       AND category IS NOT NULL AND TRIM(category) != '' AND ${adult}
      GROUP BY category ORDER BY category COLLATE NOCASE ASC`
   );
   return rows
@@ -282,6 +347,8 @@ export async function getXtreamSeriesCategories(): Promise<ChannelCategory[]> {
       sourceId: '',
       name: r.category as string,
       channelCount: r.count,
+      isAdult: r.isAdult === 1,
+      kind: 'series' as const,
     }));
 }
 
@@ -304,23 +371,95 @@ export async function getDuplicateMovieTitles(limit = 20): Promise<Array<{ title
   );
 }
 
-export async function countMovies(): Promise<number> {
-  return countChannels({ kind: 'movie' });
+export async function countMovies(includeAdult = false): Promise<number> {
+  return countChannels({ kind: 'movie', includeAdult });
 }
 
 /**
  * Radios: explicit kind=radio, plus live streams whose category_name contains RADIO.
  */
-export async function getRadioChannels(limit = 10000): Promise<Channel[]> {
+export async function getRadioChannels(limit = 10000, includeAdult = false): Promise<Channel[]> {
   const db = await getDatabase();
+  const adult = adultSql(includeAdult);
   return db.getAllAsync<Channel>(
     `SELECT * FROM channels
-     WHERE kind = 'radio'
-        OR (kind = 'live' AND (
+     WHERE ${adult} AND (
+       kind = 'radio'
+       OR (kind = 'live' AND (
               UPPER(IFNULL(category, '')) LIKE '%RADIO%'
            OR UPPER(IFNULL(groupTitle, '')) LIKE '%RADIO%'
-        ))
+       ))
+     )
      ORDER BY sortIndex ASC LIMIT ?`,
     limit
   );
+}
+
+export interface ManagedCategoryRow {
+  id: string;
+  sourceId: string;
+  kind: ContentKind;
+  name: string;
+  isAdult: boolean;
+  channelCount: number;
+}
+
+/** All category rows for parental management (includes adult + non-adult). */
+export async function listManagedCategories(): Promise<ManagedCategoryRow[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<{
+    id: string;
+    sourceId: string;
+    kind: string;
+    name: string;
+    isAdult: number;
+  }>(`SELECT id, sourceId, kind, name, isAdult FROM categories ORDER BY isAdult DESC, name COLLATE NOCASE ASC`);
+
+  const withCounts: ManagedCategoryRow[] = [];
+  for (const row of rows) {
+    const countRow = await db.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(*) as count FROM channels WHERE sourceId = ? AND kind = ? AND category = ?`,
+      row.sourceId,
+      row.kind,
+      row.name
+    );
+    withCounts.push({
+      id: row.id,
+      sourceId: row.sourceId,
+      kind: row.kind as ContentKind,
+      name: row.name,
+      isAdult: row.isAdult === 1,
+      channelCount: countRow?.count ?? 0,
+    });
+  }
+  return withCounts;
+}
+
+export async function countAdultCategories(): Promise<number> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) as count FROM categories WHERE isAdult = 1`
+  );
+  return row?.count ?? 0;
+}
+
+/** Manual mark / unmark — updates categories row and denormalized channel flags. */
+export async function setCategoryAdultFlag(categoryId: string, isAdult: boolean): Promise<void> {
+  const db = await getDatabase();
+  const cat = await db.getFirstAsync<{ sourceId: string; kind: string; name: string }>(
+    `SELECT sourceId, kind, name FROM categories WHERE id = ?`,
+    categoryId
+  );
+  if (!cat) return;
+
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(`UPDATE categories SET isAdult = ? WHERE id = ?`, isAdult ? 1 : 0, categoryId);
+    await db.runAsync(
+      `UPDATE channels SET isAdult = ? WHERE sourceId = ? AND kind = ? AND category = ?`,
+      isAdult ? 1 : 0,
+      cat.sourceId,
+      cat.kind,
+      cat.name
+    );
+  });
 }

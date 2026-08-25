@@ -16,6 +16,8 @@ export interface Channel {
   category?: string;
   /** Xtream category_id — kept separate so live/vod/series maps never collide. */
   xtreamCategoryId?: string;
+  /** Parental: category flagged adult at import (or manual override). */
+  isAdult?: boolean;
   /** Order the channel appeared in its source, for stable list rendering. */
   sortIndex: number;
   /** live | movie | series | radio — inferred at import from playlist metadata. */
@@ -35,6 +37,9 @@ export interface ChannelCategory {
   sourceId: string;
   name: string;
   channelCount: number;
+  /** Parental marker — hidden by default when true. */
+  isAdult?: boolean;
+  kind?: import('./universe').ContentKind;
 }
 
 /**

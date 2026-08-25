@@ -11,6 +11,7 @@ import { getCategories, getChannels } from '@/services/channelsRepository';
 import { groupedFromChannels, groupFavoriteChannel, groupHasFavorite } from '@/services/channelGroups';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
 import { useSourcesStore } from '@/store/useSourcesStore';
+import { useParentalStore } from '@/store/useParentalStore';
 
 const PAGE_SIZE = 5000;
 
@@ -20,6 +21,9 @@ export default function PlaylistChannelsScreen() {
   const source = useSourcesStore((s) => s.sources.find((src) => src.id === id));
   const toggleFavorite = useFavoritesStore((s) => s.toggle);
   const isFavorite = useFavoritesStore((s) => s.isFavorite);
+  const unlocked = useParentalStore((s) => s.unlocked);
+  const pinConfigured = useParentalStore((s) => s.pinConfigured);
+  const includeAdult = pinConfigured && unlocked;
 
   const [categories, setCategories] = useState<ChannelCategory[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>(undefined);
@@ -28,16 +32,16 @@ export default function PlaylistChannelsScreen() {
 
   useEffect(() => {
     if (!id) return;
-    getCategories(id).then(setCategories);
-  }, [id]);
+    getCategories(id, undefined, includeAdult).then(setCategories);
+  }, [id, includeAdult]);
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    getChannels(id, { category: selectedCategory, limit: PAGE_SIZE })
+    getChannels(id, { category: selectedCategory, limit: PAGE_SIZE, includeAdult })
       .then((rows) => setChannels(groupedFromChannels(rows)))
       .finally(() => setLoading(false));
-  }, [id, selectedCategory]);
+  }, [id, selectedCategory, includeAdult]);
 
   return (
     <ScreenSafeArea style={styles.safeArea}>

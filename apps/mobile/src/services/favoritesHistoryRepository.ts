@@ -9,11 +9,13 @@ export async function listFavorites(): Promise<FavoriteChannel[]> {
 }
 
 /** Favorites joined with their channel metadata, for rendering (Home "Favoris" section, Favoris tab). */
-export async function listFavoriteChannels(limit = 50): Promise<Channel[]> {
+export async function listFavoriteChannels(limit = 50, includeAdult = false): Promise<Channel[]> {
   const db = await getDatabase();
+  const adult = includeAdult ? '1=1' : '(c.isAdult IS NULL OR c.isAdult = 0)';
   return db.getAllAsync<Channel>(
     `SELECT c.* FROM favorites f
      JOIN channels c ON c.id = f.channelId
+     WHERE ${adult}
      ORDER BY f.addedAt DESC
      LIMIT ?`,
     limit

@@ -31,6 +31,7 @@ import { useImmersivePlayback } from '@/hooks/useImmersivePlayback';
 import { PlayerVideoSurface } from '@/components/player/PlayerVideoSurface';
 import { PlayerChannelPicker } from '@/components/player/PlayerChannelPicker';
 import { PlayerGestureLayer } from '@/components/player/PlayerGestureLayer';
+import { useParentalStore } from '@/store/useParentalStore';
 
 type PlayerScreenState = 'loading' | 'playing' | 'reconnecting' | 'error';
 
@@ -173,6 +174,14 @@ export default function PlayerScreen() {
         return;
       }
       setChannel(ch);
+
+      const parental = useParentalStore.getState();
+      const adultAllowed = parental.pinConfigured && parental.unlocked;
+      if (ch.isAdult && !adultAllowed) {
+        setScreenState('error');
+        setLastErrorSummary('Contenu adulte masqué. Déverrouillez le contrôle parental dans Réglages.');
+        return;
+      }
 
       if (ch.kind === 'series' && ch.xtreamSeriesId != null && ch.xtreamEpisodeId) {
         const eps = await getSeriesEpisodes(ch.sourceId, ch.xtreamSeriesId);

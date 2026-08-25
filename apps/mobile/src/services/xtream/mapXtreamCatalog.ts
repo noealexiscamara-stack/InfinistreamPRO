@@ -8,6 +8,7 @@ import type {
 import { ARRAY_APPEND_BATCH } from '@infiny-stream/shared';
 import type { ContentKind } from '@infiny-stream/types';
 import type { XtreamImportProgress } from '@/services/xtream/importXtream';
+import { isAdultCategoryName } from '@/utils/adultCategory';
 
 export interface PersistableChannel {
   name: string;
@@ -19,6 +20,8 @@ export interface PersistableChannel {
   country?: string;
   category?: string;
   xtreamCategoryId?: string;
+  /** Set at import from category_name adult markers (or manual override). */
+  isAdult?: boolean;
   sortIndex: number;
   kind?: ContentKind;
   plot?: string;
@@ -78,6 +81,7 @@ export function appendXtreamLiveStreams(
       groupTitle: category,
       category,
       xtreamCategoryId: stream.categoryId || undefined,
+      isAdult: isAdultCategoryName(category),
       tvgId: stream.epgChannelId,
       sortIndex: sortIndexStart + i,
       kind: 'live',
@@ -103,6 +107,7 @@ export function appendXtreamVodStreams(
       groupTitle: category,
       category,
       xtreamCategoryId: vod.categoryId || undefined,
+      isAdult: isAdultCategoryName(category),
       sortIndex: sortIndexStart + i,
       kind: 'movie',
       rating: vod.rating,
@@ -131,6 +136,7 @@ export function appendXtreamSeriesCatalog(
       groupTitle: category,
       category,
       xtreamCategoryId: series.categoryId || undefined,
+      isAdult: isAdultCategoryName(category),
       sortIndex: sortIndexStart + i,
       kind: 'series',
       plot: series.plot,

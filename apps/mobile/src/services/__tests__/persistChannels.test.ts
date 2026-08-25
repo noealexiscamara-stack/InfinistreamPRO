@@ -48,13 +48,15 @@ class MemoryChannelsDb {
       return;
     }
     if (sql.startsWith('DELETE FROM xtream_series_cache')) return;
+    if (sql.startsWith('DELETE FROM categories')) return;
+    if (sql.startsWith('INSERT OR REPLACE INTO categories')) return;
     if (sql.startsWith('UPDATE sources SET channelCount')) {
       this.sourceUpdates.push({ channelCount: Number(params[0]), sourceId: String(params[3]) });
       return;
     }
     if (sql.startsWith('INSERT OR REPLACE INTO channels')) {
-      // Multi-row: 21 columns per row
-      const COLS = 21;
+      // Multi-row: 22 columns per row
+      const COLS = 22;
       for (let i = 0; i + COLS - 1 < params.length; i += COLS) {
         const id = String(params[i]);
         this.channels.set(id, {

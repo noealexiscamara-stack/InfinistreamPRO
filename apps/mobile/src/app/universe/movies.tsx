@@ -17,6 +17,7 @@ import {
 import { formatDisplayRating } from '@/services/xtream/mapXtreamCatalog';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
 import { useSourcesStore } from '@/store/useSourcesStore';
+import { useParentalStore } from '@/store/useParentalStore';
 import { posterGridColumns, posterTileWidth } from '@/utils/posterGrid';
 
 const PAGE_SIZE = 120;
@@ -27,6 +28,9 @@ export default function MoviesUniverseScreen() {
   const { width } = useWindowDimensions();
   const numColumns = useMemo(() => posterGridColumns(width), [width]);
   const tileWidth = posterTileWidth(width, numColumns);
+  const unlocked = useParentalStore((s) => s.unlocked);
+  const pinConfigured = useParentalStore((s) => s.pinConfigured);
+  const includeAdult = pinConfigured && unlocked;
 
   const [mode, setMode] = useState<BrowseMode>('categories');
   const [categories, setCategories] = useState<ChannelCategory[]>([]);
@@ -50,8 +54,8 @@ export default function MoviesUniverseScreen() {
     setLoading(true);
     try {
       const [cats, total] = await Promise.all([
-        getAllCategoriesByKind('movie'),
-        countChannels({ kind: 'movie' }),
+        getAllCategoriesByKind('movie', includeAdult),
+        countChannels({ kind: 'movie', includeAdult }),
       ]);
       setCategories(cats);
       setTotalCount(total);
@@ -59,7 +63,7 @@ export default function MoviesUniverseScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [includeAdult]);
 
   const loadInitialGrid = useCallback(async (categoryName: string | null) => {
     setLoading(true);
@@ -67,14 +71,20 @@ export default function MoviesUniverseScreen() {
     loadedCountRef.current = 0;
     categoryNameRef.current = categoryName;
     try {
-      const rows = await getAllChannelsByKindAndCategory('movie', categoryName, PAGE_SIZE, 0);
+      const rows = await getAllChannelsByKindAndCategory(
+        'movie',
+        categoryName,
+        PAGE_SIZE,
+        0,
+        includeAdult
+      );
       loadedCountRef.current = rows.length;
       setMovies(rows);
       setHasMore(rows.length === PAGE_SIZE);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [includeAdult]);
 
   const loadMore = useCallback(async () => {
     if (loadingMoreRef.current || !hasMore || loading) return;
@@ -86,7 +96,8 @@ export default function MoviesUniverseScreen() {
         'movie',
         categoryNameRef.current,
         PAGE_SIZE,
-        offset
+        offset,
+        includeAdult
       );
       loadedCountRef.current = offset + rows.length;
       setMovies((prev) => {
@@ -99,13 +110,15 @@ export default function MoviesUniverseScreen() {
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [hasMore, loading]);
+  }, [hasMore, loading, includeAdult]);
 
   useEffect(() => {
     if (mode === 'categories') {
       void loadCategories();
+    } else {
+      void loadInitialGrid(categoryNameRef.current);
     }
-  }, [mode, loadCategories]);
+  }, [mode, loadCategories, loadInitialGrid, includeAdult]);
 
   const openGrid = (category: ChannelCategory | null) => {
     setSelectedCategory(category);

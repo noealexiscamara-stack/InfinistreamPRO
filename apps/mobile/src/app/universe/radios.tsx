@@ -10,15 +10,19 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { UniverseHeader } from '@/components/universe/UniverseHeader';
 import { getRadioChannels } from '@/services/channelsRepository';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
+import { useParentalStore } from '@/store/useParentalStore';
 
 export default function RadiosUniverseScreen() {
   const [radios, setRadios] = useState<Channel[]>([]);
   const toggleFavorite = useFavoritesStore((s) => s.toggle);
   const isFavorite = useFavoritesStore((s) => s.isFavorite);
+  const unlocked = useParentalStore((s) => s.unlocked);
+  const pinConfigured = useParentalStore((s) => s.pinConfigured);
+  const includeAdult = pinConfigured && unlocked;
 
   const reload = useCallback(() => {
-    getRadioChannels(10000).then(setRadios);
-  }, []);
+    getRadioChannels(10000, includeAdult).then(setRadios);
+  }, [includeAdult]);
 
   useEffect(() => {
     reload();

@@ -19,6 +19,7 @@ import {
 import { isXtreamSeriesPlaceholder } from '@/services/persistChannels';
 import { formatDisplayRating } from '@/services/xtream/mapXtreamCatalog';
 import { posterGridColumns, posterTileWidth } from '@/utils/posterGrid';
+import { useParentalStore } from '@/store/useParentalStore';
 
 const PAGE_SIZE = 120;
 const UNPARSED_PREVIEW = 30;
@@ -58,6 +59,9 @@ export default function SeriesUniverseScreen() {
   const { width } = useWindowDimensions();
   const numColumns = useMemo(() => posterGridColumns(width), [width]);
   const tileWidth = posterTileWidth(width, numColumns);
+  const unlocked = useParentalStore((s) => s.unlocked);
+  const pinConfigured = useParentalStore((s) => s.pinConfigured);
+  const includeAdult = pinConfigured && unlocked;
 
   const [mode, setMode] = useState<BrowseMode>('categories');
   const [categories, setCategories] = useState<ChannelCategory[]>([]);
@@ -77,14 +81,17 @@ export default function SeriesUniverseScreen() {
   const loadCategories = useCallback(async () => {
     setLoading(true);
     try {
-      const [cats, counts] = await Promise.all([getXtreamSeriesCategories(), getKindCounts()]);
+      const [cats, counts] = await Promise.all([
+        getXtreamSeriesCategories(includeAdult),
+        getKindCounts(undefined, includeAdult),
+      ]);
       setCategories(cats);
       setTotalCount(counts.series);
       console.log(`[Universe] series categories=${cats.length} total=${counts.series}`);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [includeAdult]);
 
   const loadInitialGrid = useCallback(async (categoryName: string | null) => {
     setLoading(true);
@@ -96,8 +103,8 @@ export default function SeriesUniverseScreen() {
       const [m3uPage, xtreamPage] = await Promise.all([
         categoryName
           ? Promise.resolve([] as Channel[])
-          : getAllChannelsByKind('series', PAGE_SIZE, 0),
-        getXtreamSeriesCatalog(PAGE_SIZE, 0, categoryName),
+          : getAllChannelsByKind('series', PAGE_SIZE, 0, includeAdult),
+        getXtreamSeriesCatalog(PAGE_SIZE, 0, categoryName, includeAdult),
       ]);
 
       const m3uCandidates = m3uPage.filter(
@@ -112,7 +119,7 @@ export default function SeriesUniverseScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [includeAdult]);
 
   const loadMore = useCallback(async () => {
     if (loadingMoreRef.current || !hasMore || loading) return;
@@ -120,7 +127,12 @@ export default function SeriesUniverseScreen() {
     setLoadingMore(true);
     try {
       const offset = xtreamOffsetRef.current;
-      const xtreamPage = await getXtreamSeriesCatalog(PAGE_SIZE, offset, categoryNameRef.current);
+      const xtreamPage = await getXtreamSeriesCatalog(
+        PAGE_SIZE,
+        offset,
+        categoryNameRef.current,
+        includeAdult
+      );
       xtreamOffsetRef.current = offset + xtreamPage.length;
       setRows((prev) => [...prev, ...xtreamSeriesRows(xtreamPage)]);
       setHasMore(xtreamPage.length === PAGE_SIZE);
@@ -128,13 +140,15 @@ export default function SeriesUniverseScreen() {
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [hasMore, loading]);
+  }, [hasMore, loading, includeAdult]);
 
   useEffect(() => {
     if (mode === 'categories') {
       void loadCategories();
+    } else {
+      void loadInitialGrid(categoryNameRef.current);
     }
-  }, [mode, loadCategories]);
+  }, [mode, loadCategories, loadInitialGrid, includeAdult]);
 
   const openGrid = (category: ChannelCategory | null) => {
     setSelectedCategory(category);

@@ -10,6 +10,7 @@ import {
 import type { Channel, ContentKind, Source } from '@infiny-stream/types';
 import { getDatabase } from '@/utils/db';
 import type { PersistableChannel } from '@/services/xtream/mapXtreamCatalog';
+import { categoryRowId, isAdultCategoryName } from '@/utils/adultCategory';
 
 export type { PersistableChannel };
 
@@ -21,10 +22,12 @@ export interface PersistChannelsResult {
   rowsPerSecond?: number;
   /** Number of native bridge calls used for inserts. */
   nativeInsertCalls?: number;
+  /** Categories flagged adult during this import (for parental diagnostics). */
+  adultCategoryCount?: number;
 }
 
 /**
- * Rows per multi-row INSERT. 500 × 21 bind params = 10 500 variables —
+ * Rows per multi-row INSERT. 500 × 22 bind params = 11 000 variables —
  * well under SQLite's default SQLITE_MAX_VARIABLE_NUMBER (32 766).
  * One native call per batch instead of one per row.
  */
@@ -52,6 +55,7 @@ const CHANNEL_INSERT_COLUMNS = [
   'xtreamStreamId',
   'xtreamSeriesId',
   'xtreamEpisodeId',
+  'isAdult',
 ] as const;
 
 const CHANNEL_INSERT_COL_COUNT = CHANNEL_INSERT_COLUMNS.length;
@@ -79,13 +83,20 @@ export function formatImportSummary(imported: number, ignored: number): string {
 function withKind(
   channels: PersistableChannel[],
   sourceType?: Source['type']
-): Array<PersistableChannel & { kind: ContentKind }> {
+): Array<PersistableChannel & { kind: ContentKind; isAdult: boolean }> {
   const classify =
     sourceType === 'm3u_url' || sourceType === 'm3u_file' ? classifyM3uEntry : classifyEntry;
-  return channels.map((ch) => ({ ...ch, kind: ch.kind ?? classify(ch) }));
+  return channels.map((ch) => {
+    const kind = ch.kind ?? classify(ch);
+    const isAdult =
+      ch.isAdult != null
+        ? Boolean(ch.isAdult)
+        : isAdultCategoryName(ch.category) || isAdultCategoryName(ch.groupTitle);
+    return { ...ch, kind, isAdult };
+  });
 }
 
-type TaggedChannel = PersistableChannel & { kind: ContentKind };
+type TaggedChannel = PersistableChannel & { kind: ContentKind; isAdult: boolean };
 
 type BindValue = string | number | null;
 
@@ -112,6 +123,7 @@ function bindRowParams(sourceId: string, ch: TaggedChannel): BindValue[] {
     ch.xtreamStreamId ?? null,
     ch.xtreamSeriesId ?? null,
     ch.xtreamEpisodeId ?? null,
+    ch.isAdult ? 1 : 0,
   ];
 }
 
@@ -165,6 +177,7 @@ export async function replaceSourceChannels(
       country: ch.country,
       category: ch.category,
       xtreamCategoryId: ch.xtreamCategoryId,
+      isAdult: ch.isAdult,
       sortIndex: ch.sortIndex,
       kind: ch.kind,
       plot: ch.plot,
@@ -199,6 +212,7 @@ export async function replaceSourceChannels(
   try {
     await db.withTransactionAsync(async () => {
       await db.runAsync('DELETE FROM channels WHERE sourceId = ?', sourceId);
+      await db.runAsync('DELETE FROM categories WHERE sourceId = ?', sourceId);
       await db.runAsync('DELETE FROM xtream_series_cache WHERE sourceId = ?', sourceId);
 
       if (tagged.length > 0) {
@@ -237,6 +251,29 @@ export async function replaceSourceChannels(
         }
       }
 
+      // Upsert category rows (parental isAdult lives here + denormalized on channels).
+      const catMap = new Map<string, { kind: ContentKind; name: string; isAdult: boolean }>();
+      for (const ch of tagged) {
+        if (!ch.category?.trim()) continue;
+        const key = `${ch.kind}::${ch.category}`;
+        const prev = catMap.get(key);
+        catMap.set(key, {
+          kind: ch.kind,
+          name: ch.category,
+          isAdult: Boolean(prev?.isAdult || ch.isAdult),
+        });
+      }
+      for (const cat of catMap.values()) {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO categories (id, sourceId, kind, name, isAdult) VALUES (?, ?, ?, ?, ?)`,
+          categoryRowId(sourceId, cat.kind, cat.name),
+          sourceId,
+          cat.kind,
+          cat.name,
+          cat.isAdult ? 1 : 0
+        );
+      }
+
       reportProgress(imported + rejected, saveTotal);
 
       const now = new Date().toISOString();
@@ -256,11 +293,15 @@ export async function replaceSourceChannels(
 
   const elapsedSec = Math.max(0.001, (Date.now() - startedAt) / 1000);
   const rowsPerSecond = Math.round(imported / elapsedSec);
+  const adultCategoryCount = new Set(
+    tagged.filter((ch) => ch.isAdult && ch.category).map((ch) => `${ch.kind}::${ch.category}`)
+  ).size;
   console.log(
     `[Import] SQLite write ${imported} rows in ${elapsedSec.toFixed(2)}s → ${rowsPerSecond} rows/s (${nativeInsertCalls} native calls)`
   );
+  console.log(`[Import] adult categories marked=${adultCategoryCount}`);
 
-  return { imported, duplicatesRemoved, rejected, rowsPerSecond, nativeInsertCalls };
+  return { imported, duplicatesRemoved, rejected, rowsPerSecond, nativeInsertCalls, adultCategoryCount };
 }
 
 /** Upserts episode rows fetched from getSeriesInfo — does not wipe the whole source. */
@@ -273,8 +314,11 @@ export async function upsertSeriesEpisodes(sourceId: string, episodes: Persistab
     for (const batch of batchesOf(episodes, CHANNEL_INSERT_BATCH_ROWS)) {
       const params: BindValue[] = [];
       for (const ch of batch) {
-        // Reuse the same column layout; episodes leave some fields null.
-        const tagged = { ...ch, kind: 'series' as const };
+        const tagged: TaggedChannel = {
+          ...ch,
+          kind: 'series',
+          isAdult: Boolean(ch.isAdult),
+        };
         const row = bindRowParams(sourceId, tagged);
         for (let i = 0; i < row.length; i++) params.push(row[i]);
       }

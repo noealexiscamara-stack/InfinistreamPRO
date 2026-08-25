@@ -19,6 +19,7 @@ import { useSourcesStore } from '@/store/useSourcesStore';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
 import { useHistoryStore } from '@/store/useHistoryStore';
 import { getKindCounts } from '@/services/channelsRepository';
+import { useParentalStore } from '@/store/useParentalStore';
 
 const LAYOUT_REF_WIDTH = 960;
 /** Target content stack height in landscape — scale down when the viewport is shorter. */
@@ -39,6 +40,9 @@ export default function HomeScreen() {
   const loadHistory = useHistoryStore((s) => s.load);
   const entries = useHistoryStore((s) => s.entries);
   const favoriteCount = useFavoritesStore((s) => s.favoriteIds.size);
+  const unlocked = useParentalStore((s) => s.unlocked);
+  const pinConfigured = useParentalStore((s) => s.pinConfigured);
+  const includeAdult = pinConfigured && unlocked;
   const [kindCounts, setKindCounts] = useState<Record<ContentKind, number>>({
     live: 0,
     movie: 0,
@@ -49,8 +53,8 @@ export default function HomeScreen() {
   const continueWatching = entries[0];
 
   const reload = useCallback(async () => {
-    await Promise.all([loadHistory(), getKindCounts().then(setKindCounts)]);
-  }, [loadHistory]);
+    await Promise.all([loadHistory(), getKindCounts(undefined, includeAdult).then(setKindCounts)]);
+  }, [loadHistory, includeAdult]);
 
   useFocusEffect(
     useCallback(() => {

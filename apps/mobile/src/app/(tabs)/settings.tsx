@@ -61,6 +61,12 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Contenu</Text>
           <GlassCard padded={false}>
+            <Row
+              icon="shield-checkmark-outline"
+              label="Contrôle parental"
+              meta="Masquer les catégories adultes"
+              onPress={() => router.push('/settings/parental' as Href)}
+            />
             <Row icon="albums-outline" label="Mes playlists" onPress={() => router.push('/playlists')} />
             <Row
               icon="bug-outline"

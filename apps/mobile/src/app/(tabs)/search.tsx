@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { searchChannels } from '@/services/channelsRepository';
 import { groupedFromChannels, groupFavoriteChannel, groupHasFavorite } from '@/services/channelGroups';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
+import { useParentalStore } from '@/store/useParentalStore';
 
 const DEBOUNCE_MS = 250;
 
@@ -20,6 +21,9 @@ export default function SearchScreen() {
   const [hasSearched, setHasSearched] = useState(false);
   const toggleFavorite = useFavoritesStore((s) => s.toggle);
   const isFavorite = useFavoritesStore((s) => s.isFavorite);
+  const unlocked = useParentalStore((s) => s.unlocked);
+  const pinConfigured = useParentalStore((s) => s.pinConfigured);
+  const includeAdult = pinConfigured && unlocked;
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -33,7 +37,7 @@ export default function SearchScreen() {
     }
 
     debounceTimer.current = setTimeout(async () => {
-      const matches = await searchChannels(null, trimmed);
+      const matches = await searchChannels(null, trimmed, 200, includeAdult);
       setResults(groupedFromChannels(matches));
       setHasSearched(true);
     }, DEBOUNCE_MS);
@@ -41,7 +45,7 @@ export default function SearchScreen() {
     return () => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
-  }, [query]);
+  }, [query, includeAdult]);
 
   return (
     <ScreenSafeArea style={styles.safeArea}>
