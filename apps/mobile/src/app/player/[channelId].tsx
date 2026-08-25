@@ -28,10 +28,12 @@ import {
 } from '@/services/playback/playerAspectRatio';
 import { usePlayerAspectStore } from '@/store/usePlayerAspectStore';
 import { useImmersivePlayback } from '@/hooks/useImmersivePlayback';
+import { usePlaybackKeepAwake } from '@/hooks/usePlaybackKeepAwake';
 import { PlayerVideoSurface } from '@/components/player/PlayerVideoSurface';
 import { PlayerChannelPicker } from '@/components/player/PlayerChannelPicker';
 import { PlayerGestureLayer } from '@/components/player/PlayerGestureLayer';
 import { useParentalStore } from '@/store/useParentalStore';
+import { forceDeactivatePlaybackKeepAwake } from '@/services/playback/playbackKeepAwake';
 
 type PlayerScreenState = 'loading' | 'playing' | 'reconnecting' | 'error';
 
@@ -91,6 +93,9 @@ export default function PlayerScreen() {
 
   useImmersivePlayback(showVideo && screenState !== 'error', chromeVisible);
 
+  /** Live / VOD / séries only — radios laissent l'écran s'éteindre. */
+  usePlaybackKeepAwake(showVideo && screenState === 'playing', player.playing);
+
   const channelNumber = (group?.sortIndex ?? channel?.sortIndex ?? 0) + 1;
   const channelTitle = group?.name ?? channel?.name ?? activeRadio?.name ?? '';
 
@@ -142,6 +147,7 @@ export default function PlayerScreen() {
     return () => {
       clearPlaybackQuality();
       if (aspectHintTimer.current) clearTimeout(aspectHintTimer.current);
+      forceDeactivatePlaybackKeepAwake();
       void controllerRef.current?.releaseSource('screen-unmount');
       controllerRef.current?.dispose();
       controllerRef.current = null;
@@ -302,6 +308,7 @@ export default function PlayerScreen() {
           [extracted.code, extracted.message].filter(Boolean).join(' — ') || 'Erreur lecteur'
         );
         setControlsVisible(true);
+        forceDeactivatePlaybackKeepAwake();
 
         void controller?.handlePlaybackError('source');
       }
@@ -339,6 +346,7 @@ export default function PlayerScreen() {
   }, []);
 
   function handleBack() {
+    forceDeactivatePlaybackKeepAwake();
     void controllerRef.current?.releaseSource('back');
     router.back();
   }

@@ -10,10 +10,11 @@
   "scripts": {
     "mobile": "npm run start --workspace=apps/mobile",
     "backend": "npm run start:dev --workspace=apps/backend",
+    "test": "npm run test --workspaces --if-present",
     "test:shared": "npm run test --workspace=packages/shared",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   }
 }
