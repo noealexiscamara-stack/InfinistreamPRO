@@ -15,6 +15,11 @@ class MemoryChannelsDb {
   /** Simulated JS↔native bridge cost per runAsync (ms). */
   bridgeLatencyMs = 0;
 
+  async getFirstAsync<T>(sql: string): Promise<T | null> {
+    if (sql.includes('journal_mode')) return { journal_mode: 'wal' } as T;
+    return null;
+  }
+
   async execAsync(sql: string): Promise<void> {
     this.execCalls.push(sql);
   }
@@ -92,6 +97,7 @@ describe('replaceSourceChannels', () => {
     expect(result.nativeInsertCalls!).toBeLessThan(200);
     expect(db.sourceUpdates).toEqual([{ channelCount: 50_000, sourceId: 'src-large' }]);
     expect(db.execCalls).toContain('PRAGMA synchronous = OFF');
+    expect(db.execCalls.some((c) => c.includes('journal_mode'))).toBe(true);
     expect(db.execCalls).toContain('PRAGMA synchronous = NORMAL');
   });
 
@@ -107,6 +113,7 @@ describe('replaceSourceChannels', () => {
       },
       withTransactionAsync: db.withTransactionAsync.bind(db),
       execAsync: db.execAsync.bind(db),
+      getFirstAsync: db.getFirstAsync.bind(db),
     };
 
     (getDatabase as jest.Mock).mockResolvedValue(failingDb);

@@ -183,8 +183,10 @@ export async function replaceSourceChannels(
 
   const startedAt = Date.now();
 
-  // Durability can wait until commit — sync OFF cuts fsync cost during bulk write.
+  // Durability can wait until commit — sync OFF + WAL cuts fsync cost during bulk write.
+  const priorJournal = await db.getFirstAsync<{ journal_mode: string }>('PRAGMA journal_mode');
   await db.execAsync('PRAGMA synchronous = OFF');
+  await db.execAsync('PRAGMA journal_mode = WAL');
   try {
     await db.withTransactionAsync(async () => {
       await db.runAsync('DELETE FROM channels WHERE sourceId = ?', sourceId);
@@ -239,6 +241,8 @@ export async function replaceSourceChannels(
     });
   } finally {
     await db.execAsync('PRAGMA synchronous = NORMAL');
+    const mode = priorJournal?.journal_mode?.toUpperCase() === 'DELETE' ? 'DELETE' : 'WAL';
+    await db.execAsync(`PRAGMA journal_mode = ${mode}`);
   }
 
   const elapsedSec = Math.max(0.001, (Date.now() - startedAt) / 1000);
