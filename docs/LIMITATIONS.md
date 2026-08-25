@@ -66,7 +66,19 @@ uniquement de la connectivité système (`expo-network`), jamais d'une estimatio
 
 Les échecs de lecture sont journalisés dans **Réglages → Diagnostic lecture** (code / message expo-video,
 URL, durée avant panne). expo-video n'expose pas toujours le code ExoPlayer natif complet — le champ
-`rawErrorJson` capture tout ce que le bridge JS renvoie.
+`rawErrorJson` capture tout ce que le bridge JS renvoie. Le même écran affiche les compteurs
+**sources ouvertes / libérées / actives** (sans adb) : en régime normal `actives` doit rester ≤ 1.
+
+### Compromis zapping / stabilité (tampon de démarrage)
+
+Build de validation (août 2026) : mode `auto` utilise `minBufferForPlayback = 8 s` (et ~30 s
+d'avance). Objectif : prouver que les coupures segmentaires (5–7 s) disparaissent quand les
+slots fournisseur sont correctement libérés **et** que le démarrage n'est plus en famine.
+
+Ce seuil de **démarrage** est volontairement généreux et **à affiner après mesure** sur tablette
+réelle : dès que la lecture reste stable, redescendre par paliers (**6 s**, puis **4 s**) pour
+rapprocher le zapping des 2–3 s attendues en TV live. Le tampon d'**avance** (`preferredForwardBufferDuration`
+≈ 30 s) peut rester généreux — ce n'est pas lui qui fait attendre la première image.
 
 **Prochaine étape recommandée** : module Expo Kotlin exposant un plafond bitrate/hauteur Media3 si le produit
 exige un vrai plafond Économie (480p) côté lecteur.

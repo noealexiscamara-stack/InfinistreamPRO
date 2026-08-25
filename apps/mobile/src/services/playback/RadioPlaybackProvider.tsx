@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { buildStreamVideoSource } from '@/services/playback/streamSource';
+import { useStreamSessionStats } from '@/store/useStreamSessionStats';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import type { Channel } from '@infiny-stream/types';
@@ -26,6 +27,7 @@ export function RadioPlaybackProvider({ children }: { children: ReactNode }) {
     (channel: Channel) => {
       setActiveChannel(channel);
       console.log(`[Player/Radio] source OPEN url=${channel.streamUrl.slice(0, 120)}`);
+      useStreamSessionStats.getState().recordOpen(channel.streamUrl);
       player.replace(buildStreamVideoSource(channel.streamUrl));
       player.play();
     },
@@ -35,6 +37,7 @@ export function RadioPlaybackProvider({ children }: { children: ReactNode }) {
   const stopRadio = useCallback(() => {
     if (activeChannel) {
       console.log(`[Player/Radio] source RELEASE url=${activeChannel.streamUrl.slice(0, 120)}`);
+      useStreamSessionStats.getState().recordRelease('radio-stop', activeChannel.streamUrl);
     }
     player.pause();
     player.replace(null);

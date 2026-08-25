@@ -10,6 +10,7 @@ import {
   usePlaybackDiagnosticsStore,
   type PlaybackFailureRecord,
 } from '@/store/usePlaybackDiagnosticsStore';
+import { useStreamSessionStats } from '@/store/useStreamSessionStats';
 
 function FailureCard({ item }: { item: PlaybackFailureRecord }) {
   const when = useMemo(() => new Date(item.recordedAt).toLocaleString('fr-FR'), [item.recordedAt]);
@@ -47,13 +48,52 @@ function Meta({ label, value, mono }: { label: string; value: string; mono?: boo
   );
 }
 
+function ConnectionSlotsCard() {
+  const opened = useStreamSessionStats((s) => s.opened);
+  const released = useStreamSessionStats((s) => s.released);
+  const active = useStreamSessionStats((s) => s.active);
+  const lastOpenUrl = useStreamSessionStats((s) => s.lastOpenUrl);
+  const lastReleaseReason = useStreamSessionStats((s) => s.lastReleaseReason);
+  const leak = active > 1;
+
+  return (
+    <View style={[styles.card, leak && styles.cardWarn]}>
+      <Text style={styles.sectionTitle}>Connexions lecteur</Text>
+      <Text style={styles.sectionHint}>
+        Sans adb : si « Actives » dépasse 1 hors radio + TV simultanés, une source n&apos;a pas été libérée.
+      </Text>
+      <View style={styles.countersRow}>
+        <Counter label="Ouvertes" value={opened} />
+        <Counter label="Libérées" value={released} />
+        <Counter label="Actives" value={active} warn={leak} />
+      </View>
+      {!!lastOpenUrl && <Meta label="Dernière ouverture" value={lastOpenUrl} mono />}
+      {!!lastReleaseReason && <Meta label="Dernière libération" value={lastReleaseReason} />}
+      {leak ? (
+        <Text style={styles.warnText}>Attention : plus d&apos;une source active — risque de saturation fournisseur.</Text>
+      ) : null}
+    </View>
+  );
+}
+
+function Counter({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
+  return (
+    <View style={styles.counter}>
+      <Text style={[styles.counterValue, warn && styles.counterWarn]}>{value}</Text>
+      <Text style={styles.counterLabel}>{label}</Text>
+    </View>
+  );
+}
+
 export default function PlaybackDiagnosticsScreen() {
   const failures = usePlaybackDiagnosticsStore((s) => s.failures);
-  const clear = usePlaybackDiagnosticsStore((s) => s.clear);
+  const clearFailures = usePlaybackDiagnosticsStore((s) => s.clear);
+  const resetStats = useStreamSessionStats((s) => s.reset);
 
   const handleClear = useCallback(() => {
-    clear();
-  }, [clear]);
+    clearFailures();
+    resetStats();
+  }, [clearFailures, resetStats]);
 
   return (
     <ScreenSafeArea style={styles.safeArea}>
@@ -62,20 +102,24 @@ export default function PlaybackDiagnosticsScreen() {
           <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
         </Pressable>
         <Text style={styles.title}>Diagnostic lecture</Text>
-        <Pressable onPress={handleClear} hitSlop={12} disabled={failures.length === 0}>
-          <Text style={[styles.clear, failures.length === 0 && styles.clearDisabled]}>Effacer</Text>
+        <Pressable onPress={handleClear} hitSlop={12}>
+          <Text style={styles.clear}>Effacer</Text>
         </Pressable>
       </View>
 
       <Text style={styles.hint}>
-        Chaque échec ExoPlayer / expo-video est enregistré ici : code, message et délai avant panne.
+        Compteurs de sources natives + chaque échec ExoPlayer / expo-video (code, message, délai).
       </Text>
+
+      <View style={styles.listPad}>
+        <ConnectionSlotsCard />
+      </View>
 
       {failures.length === 0 ? (
         <EmptyState
           icon="bug-outline"
           title="Aucun échec enregistré"
-          message="Lancez une chaîne qui refuse de démarrer (ex. RTI 1, RTG) pour capturer le code d'erreur."
+          message="Lancez une chaîne qui refuse de démarrer pour capturer le code d'erreur. Les compteurs ci-dessus restent utiles même sans panne."
         />
       ) : (
         <FlatList
@@ -101,13 +145,13 @@ const styles = StyleSheet.create({
   },
   title: { ...typography.headline, color: colors.textPrimary, flex: 1, textAlign: 'center' },
   clear: { ...typography.bodyStrong, color: colors.brand },
-  clearDisabled: { color: colors.textTertiary },
   hint: {
     ...typography.caption,
     color: colors.textSecondary,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.md,
   },
+  listPad: { paddingHorizontal: spacing.lg, marginBottom: spacing.md },
   list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.md },
   card: {
     gap: spacing.sm,
@@ -117,6 +161,15 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
+  cardWarn: { borderColor: colors.danger },
+  sectionTitle: { ...typography.bodyStrong, color: colors.textPrimary },
+  sectionHint: { ...typography.caption, color: colors.textSecondary },
+  countersRow: { flexDirection: 'row', gap: spacing.md, marginVertical: spacing.xs },
+  counter: { flex: 1, alignItems: 'center', paddingVertical: spacing.sm },
+  counterValue: { ...typography.title, color: colors.textPrimary },
+  counterWarn: { color: colors.danger },
+  counterLabel: { ...typography.caption, color: colors.textSecondary },
+  warnText: { ...typography.caption, color: colors.danger },
   channelName: { ...typography.bodyStrong, color: colors.textPrimary },
   metaRow: { gap: 2 },
   metaLabel: { ...typography.label, color: colors.textTertiary, fontSize: 10 },

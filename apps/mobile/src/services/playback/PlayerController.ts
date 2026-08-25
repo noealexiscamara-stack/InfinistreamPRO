@@ -7,6 +7,7 @@ import {
   buildStreamVideoSource,
   isLikelyHls,
 } from '@/services/playback/streamSource';
+import { useStreamSessionStats } from '@/store/useStreamSessionStats';
 
 /**
  * Thin glue around expo-video / Media3 (ExoPlayer on Android).
@@ -48,6 +49,11 @@ const RECONNECT_BACKOFF_MS = [0, 1000, 2000, 5000, 10000];
  * 15–30 s before starting; our previous 2 s min caused segment-bound stalls).
  *
  * Values are in **seconds** (expo-video BufferOptions API).
+ *
+ * Trade-off (see docs/LIMITATIONS.md §2): minBufferForPlayback = 8 s on `auto`
+ * is intentional for this validation build (prove stalls gone). After confirmation
+ * on device, step down 6 s → 4 s to speed up zapping; keep preferredForward*
+ * generous — it is not the first-frame wait.
  */
 export const BUFFER_BY_MODE: Record<QualityMode, BufferOptions> = {
   auto: {
@@ -163,9 +169,11 @@ export class PlayerController {
     if (options?.cancelPending) this.loadSeq += 1;
     const releasedUrl = this.currentStreamUrl || this.lastKnownSafeUrl;
     const session = this.sourceSessionId;
+    const hadActiveSource = this.hasActiveSource || this.currentStreamUrl.length > 0;
 
-    if (releasedUrl) {
+    if (hadActiveSource && releasedUrl) {
       console.log(`[Player] source RELEASE reason=${reason} session=${session} url=${releasedUrl.slice(0, 120)}`);
+      useStreamSessionStats.getState().recordRelease(reason, releasedUrl);
     }
 
     try {
@@ -232,6 +240,7 @@ export class PlayerController {
     const source = buildStreamVideoSource(url);
 
     console.log(`[Player] source OPEN session=${session} hls=${isLikelyHls(url)} url=${url.slice(0, 120)}`);
+    useStreamSessionStats.getState().recordOpen(url);
 
     this.player.replace(source);
     if (!this.disposed && loadSeq === this.loadSeq) this.player.play();
