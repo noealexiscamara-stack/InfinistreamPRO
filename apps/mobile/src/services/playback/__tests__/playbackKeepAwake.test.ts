@@ -6,12 +6,12 @@ import {
   PLAYBACK_KEEP_AWAKE_TAG,
 } from '@/services/playback/playbackKeepAwake';
 
-const activateMock = jest.fn(async () => undefined);
-const deactivateMock = jest.fn();
+const activateMock = jest.fn<Promise<void>, [string?]>(async () => undefined);
+const deactivateMock = jest.fn<void, [string?]>();
 
 jest.mock('expo-keep-awake', () => ({
-  activateKeepAwakeAsync: (tag: string) => activateMock(tag),
-  deactivateKeepAwake: (tag: string) => deactivateMock(tag),
+  activateKeepAwakeAsync: (tag?: string) => activateMock(tag),
+  deactivateKeepAwake: (tag?: string) => deactivateMock(tag),
 }));
 
 describe('playbackKeepAwake', () => {

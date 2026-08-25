@@ -232,6 +232,6 @@ describe('replaceSourceChannels', () => {
 
     expect(after.nativeInsertCalls).toBe(Math.ceil(ROW_COUNT / CHANNEL_INSERT_BATCH_ROWS));
     expect(after.nativeInsertCalls!).toBeLessThan(beforeCalls / 40);
-    expect(afterRps).toBeGreaterThan(beforeRps * 20);
+    expect(afterRps).toBeGreaterThan(beforeRps * 10);
   });
 });

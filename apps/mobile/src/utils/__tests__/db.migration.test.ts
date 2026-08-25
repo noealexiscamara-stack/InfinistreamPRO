@@ -1,5 +1,6 @@
 import {
   INITIAL_SCHEMA,
+  LATEST_SCHEMA_VERSION,
   columnExists,
   getSchemaVersion,
   runSchemaMigrations,
@@ -234,6 +235,41 @@ class MemoryMigrationDb implements MigrationDb {
       return [{ count: this.rows.get('channels')?.length ?? 0 }] as T[];
     }
 
+    if (sql.startsWith('SELECT id, category, groupTitle FROM channels')) {
+      return (this.rows.get('channels') ?? []).map((row) => ({
+        id: row.id,
+        category: row.category ?? null,
+        groupTitle: row.groupTitle ?? null,
+      })) as T[];
+    }
+
+    if (sql.startsWith('SELECT sourceId, kind, category, MAX(isAdult)')) {
+      const channels = this.rows.get('channels') ?? [];
+      const map = new Map<string, { sourceId: string; kind: string; category: string; isAdult: number }>();
+      for (const row of channels) {
+        const cat = row.category;
+        if (!cat || !String(cat).trim()) continue;
+        const key = `${row.sourceId}::${row.kind}::${cat}`;
+        const prev = map.get(key);
+        const isAdult = Math.max(prev?.isAdult ?? 0, row.isAdult ? 1 : 0);
+        map.set(key, {
+          sourceId: String(row.sourceId),
+          kind: String(row.kind ?? 'live'),
+          category: String(cat),
+          isAdult,
+        });
+      }
+      return [...map.values()] as T[];
+    }
+
+    if (sql.startsWith('SELECT id, name, isAdult FROM categories')) {
+      return (this.rows.get('categories') ?? []).map((row) => ({
+        id: row.id,
+        name: row.name,
+        isAdult: row.isAdult ?? 0,
+      })) as T[];
+    }
+
     throw new Error(`Unsupported SQL query in migration test mock: ${sql} ${params.join(', ')}`);
   }
 
@@ -243,17 +279,61 @@ class MemoryMigrationDb implements MigrationDb {
   }
 
   async prepareAsync(sql: string) {
-    if (!sql.startsWith('UPDATE channels SET kind = $kind WHERE id = $id')) {
-      throw new Error(`Unsupported prepared statement: ${sql}`);
+    if (sql.startsWith('UPDATE channels SET kind = $kind WHERE id = $id')) {
+      return {
+        executeAsync: async (params: Record<string, unknown>) => {
+          const rows = this.rows.get('channels') ?? [];
+          const row = rows.find((entry) => entry.id === params.$id);
+          if (row) row.kind = params.$kind;
+        },
+        finalizeAsync: async () => undefined,
+      };
     }
-    return {
-      executeAsync: async (params: Record<string, unknown>) => {
-        const rows = this.rows.get('channels') ?? [];
-        const row = rows.find((entry) => entry.id === params.$id);
-        if (row) row.kind = params.$kind;
-      },
-      finalizeAsync: async () => undefined,
-    };
+    if (sql.startsWith('UPDATE channels SET isAdult = 1 WHERE id = $id')) {
+      return {
+        executeAsync: async (params: Record<string, unknown>) => {
+          const rows = this.rows.get('channels') ?? [];
+          const row = rows.find((entry) => entry.id === params.$id);
+          if (row) row.isAdult = 1;
+        },
+        finalizeAsync: async () => undefined,
+      };
+    }
+    if (sql.startsWith('INSERT OR REPLACE INTO categories')) {
+      return {
+        executeAsync: async (params: Record<string, unknown>) => {
+          const list = this.rows.get('categories') ?? [];
+          const idx = list.findIndex((r) => r.id === params.$id);
+          const row = {
+            id: params.$id,
+            sourceId: params.$sourceId,
+            kind: params.$kind,
+            name: params.$name,
+            isAdult: params.$isAdult ?? 0,
+            adultAuto: params.$adultAuto ?? params.$isAdult ?? 0,
+            adultManualOverride: params.$override ?? null,
+          };
+          if (idx >= 0) list[idx] = row;
+          else list.push(row);
+          this.rows.set('categories', list);
+        },
+        finalizeAsync: async () => undefined,
+      };
+    }
+    if (sql.startsWith('UPDATE categories SET adultAuto = $auto')) {
+      return {
+        executeAsync: async (params: Record<string, unknown>) => {
+          const list = this.rows.get('categories') ?? [];
+          const row = list.find((r) => r.id === params.$id);
+          if (!row) return;
+          row.adultAuto = params.$auto;
+          row.adultManualOverride = params.$override;
+          row.isAdult = params.$effective;
+        },
+        finalizeAsync: async () => undefined,
+      };
+    }
+    throw new Error(`Unsupported prepared statement: ${sql}`);
   }
 }
 
@@ -336,7 +416,7 @@ describe('SQLite schema migrations', () => {
 
     await runSchemaMigrations(db);
 
-    expect(await getSchemaVersion(db)).toBe(3);
+    expect(await getSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
     expect(await columnExists(db, 'channels', 'kind')).toBe(true);
     expect(await columnExists(db, 'channels', 'containerExtension')).toBe(true);
 
@@ -365,7 +445,7 @@ describe('SQLite schema migrations', () => {
     await runSchemaMigrations(db);
     await runSchemaMigrations(db);
 
-    expect(await getSchemaVersion(db)).toBe(3);
+    expect(await getSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
     expect(await db.getFirstAsync(`SELECT COUNT(*) as count FROM channels`)).toEqual({ count: 2 });
   });
 
@@ -383,7 +463,7 @@ describe('SQLite schema migrations', () => {
 
     await runSchemaMigrations(db);
 
-    expect(await getSchemaVersion(db)).toBe(3);
+    expect(await getSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
     expect(await columnExists(db, 'channels', 'kind')).toBe(true);
     const channels = await db.getAllAsync<{ id: string; kind: string }>(`SELECT id, kind FROM channels`);
     expect(channels).toHaveLength(4);
@@ -398,7 +478,7 @@ describe('SQLite schema migrations', () => {
 
     await runSchemaMigrations(db);
 
-    expect(await getSchemaVersion(db)).toBe(3);
+    expect(await getSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
 
     const channels = await db.getAllAsync<{ id: string; kind: string; sourceId: string }>(
       `SELECT id, kind, sourceId FROM channels`
