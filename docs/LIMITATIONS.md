@@ -177,7 +177,22 @@ ABI — taille réelle sur appareil ≈ **¼ à ½** de l'APK universel selon le
 SoC (typiquement arm64 seul). Les APK `preview` / locaux restent universels
 pour installation sideload simple.
 
-## 12. Ce qui a été vérifié à l'exécution (pour équilibrer le tableau)
+## 12. Chaînes africaines — réparation sur `cb3445c` : cause inconnue
+
+Sur la build `cb3445c`, ~148 chaînes africaines qui ne démarraient jamais
+sont devenues jouables. Hypothèses écartées :
+
+- collision de hash 32 bits → déjà corrigée dans `86b61c8` (ancêtre de
+  `a9ac5d9`) ;
+- dédoublonnage `kind + xtreamStreamId` de `853cb47` → **ne s'appliquait
+  pas au live** à l'époque (`xtreamStreamId` non écrit sur les lignes live ;
+  correctif postérieur `e0fdce5`).
+
+**Cause de la réparation des chaînes africaines sur `cb3445c` : inconnue.**
+Protégée par `apps/mobile/src/services/__tests__/importIntegrity.test.ts`
+(50k+ lignes, URL exacte par entrée, zéro doublon `(kind, xtreamStreamId)`).
+
+## 13. Ce qui a été vérifié à l'exécution (pour équilibrer le tableau)
 
 - **43/43 tests unitaires verts** sur `packages/shared` (parser M3U, client Xtream, parser EPG XMLTV, parser HLS,
   estimateur de débit, `AdaptiveStreamingManager` — y compris le test anti-oscillation 720p/480p).
