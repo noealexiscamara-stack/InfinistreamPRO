@@ -132,7 +132,52 @@ suivi par MMKV, aucun appel réseau vers `apps/backend`). Le backend expose déj
 stockage sécurisé du token JWT, appel réel à `/subscriptions/me` au démarrage plutôt que la classe `localTrial.ts`)
 reste à faire. C'est indiqué explicitement dans `services/subscription/localTrial.ts`.
 
-## 9. Ce qui a été vérifié à l'exécution (pour équilibrer le tableau)
+## 10. TypeScript `ignoreDeprecations` (packages/shared + packages/config)
+
+Après le passage de TypeScript **6.0.3 → 5.9.3** (alignement peer `ts-jest`),
+`packages/shared/tsconfig.json` et `packages/config/tsconfig.json` déclarent :
+
+```json
+"moduleResolution": "Node10",
+"ignoreDeprecations": "5.0"
+```
+
+### Quoi exactement ?
+
+`moduleResolution: "Node10"` (anciennement nommé `"node"`) est **déprécié** depuis
+TypeScript 5.0. Sans `ignoreDeprecations`, `tsc` échoue avec `TS5107` /
+`TS5103` selon la version. L'option `ignoreDeprecations: "5.0"` **supprime
+l'erreur** pour les dépréciations introduites en TS 5.0 — ce n'est **pas** une
+migration vers `Node16` / `Bundler`.
+
+Aucune autre option dépréciée n'est volontairement masquée aujourd'hui.
+
+### Prochaine montée de TypeScript
+
+- Si on remonte à **TS 6.x** : la valeur `"5.0"` peut devenir invalide
+  (`TS5103: Invalid value for '--ignoreDeprecations'`) — déjà vu en
+  redescendant de 6.0.3. Il faudra alors soit migrer
+  `moduleResolution` vers `"Node16"` / `"Bundler"`, soit ajuster
+  `ignoreDeprecations` à la valeur supportée par cette majeure.
+- Ne **pas** considérer le typecheck vert comme une preuve que
+  `moduleResolution` est à jour. Dette technique assumée jusqu'à une passe
+  dédiée (chemins ESM, `exports` des packages workspace).
+
+## 11. Taille APK locale ~120 Mo — APK universel 4 ABI
+
+L'APK de build locale `assembleRelease` embarque **toutes** les architectures
+natives (`arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`) — confirmé via
+`aapt dump badging` (`native-code: 'arm64-v8a' 'armeabi-v7a' 'x86' 'x86_64'`).
+C'est la cause principale du volume (~120 Mo) face à Smarters/IBO (~74–78 Mo)
+qui livrent souvent des splits par ABI ou un AAB Play.
+
+**Publication Play Store** : le profil EAS `production` doit produire un
+**AAB** (`buildType: app-bundle`). Play découpe alors le téléchargement par
+ABI — taille réelle sur appareil ≈ **¼ à ½** de l'APK universel selon le
+SoC (typiquement arm64 seul). Les APK `preview` / locaux restent universels
+pour installation sideload simple.
+
+## 12. Ce qui a été vérifié à l'exécution (pour équilibrer le tableau)
 
 - **43/43 tests unitaires verts** sur `packages/shared` (parser M3U, client Xtream, parser EPG XMLTV, parser HLS,
   estimateur de débit, `AdaptiveStreamingManager` — y compris le test anti-oscillation 720p/480p).

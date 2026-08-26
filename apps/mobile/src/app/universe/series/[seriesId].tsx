@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScreenSafeArea } from '@/components/ui/ScreenSafeArea';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
@@ -19,7 +19,11 @@ import { isXtreamSeriesPlaceholder } from '@/services/persistChannels';
 import { formatDisplayRating } from '@/services/xtream/mapXtreamCatalog';
 import { loadXtreamSeriesInfo } from '@/services/xtream/xtreamSeriesService';
 
-type ScreenPhase = 'loading' | 'seasons' | 'episodes' | 'missing';
+import {
+  seriesPhaseAfterLoad,
+  seriesPhaseOnFetchStart,
+  type SeriesDetailPhase,
+} from '@/app/universe/series/seriesDetailPhase';
 
 interface EpisodeListItem {
   id: string;
@@ -43,7 +47,7 @@ export default function SeriesDetailScreen() {
   const { seriesId } = useLocalSearchParams<{ seriesId: string }>();
   const id = Array.isArray(seriesId) ? seriesId[0] : seriesId;
 
-  const [phase, setPhase] = useState<ScreenPhase>('loading');
+  const [phase, setPhase] = useState<SeriesDetailPhase>(seriesPhaseOnFetchStart());
   const [title, setTitle] = useState('Série');
   const [coverUrl, setCoverUrl] = useState<string | undefined>();
   const [plot, setPlot] = useState<string | undefined>();
@@ -57,10 +61,10 @@ export default function SeriesDetailScreen() {
 
   const reload = useCallback(async () => {
     if (!id) {
-      setPhase('missing');
+      setPhase(seriesPhaseAfterLoad({ found: false, seasonCount: 0 }));
       return;
     }
-    setPhase('loading');
+    setPhase(seriesPhaseOnFetchStart());
     setSelectedSeason(null);
 
     try {
@@ -69,7 +73,7 @@ export default function SeriesDetailScreen() {
         // Load source from DB — never trust an empty in-memory store during boot.
         const source = (await getSource(catalogRow.sourceId)) as XtreamSource | null;
         if (!source || source.type !== 'xtream') {
-          setPhase('missing');
+          setPhase(seriesPhaseAfterLoad({ found: false, seasonCount: 0 }));
           return;
         }
 
@@ -94,11 +98,12 @@ export default function SeriesDetailScreen() {
         setEpisodeChannelById(byEpisodeId);
         setSeasons([]);
 
-        if (info.seasons.length === 0 && info.episodes.length === 0) {
-          setPhase('missing');
-          return;
-        }
-        setPhase('seasons');
+        setPhase(
+          seriesPhaseAfterLoad({
+            found: true,
+            seasonCount: info.seasons.length || (info.episodes.length > 0 ? 1 : 0),
+          })
+        );
         return;
       }
 
@@ -109,7 +114,7 @@ export default function SeriesDetailScreen() {
       const grouped = groupEpisodesIntoSeries(m3uRows);
       const series: GroupedSeries | undefined = grouped.series.find((s) => s.id === id);
       if (!series) {
-        setPhase('missing');
+        setPhase(seriesPhaseAfterLoad({ found: false, seasonCount: 0 }));
         return;
       }
       setTitle(series.title);
@@ -122,10 +127,10 @@ export default function SeriesDetailScreen() {
       setEpisodeChannelById(new Map());
       const m3uSeasons = series.seasons.map((s) => ({ season: s.season, episodes: s.episodes }));
       setSeasons(m3uSeasons);
-      setPhase(m3uSeasons.length === 0 ? 'missing' : 'seasons');
+      setPhase(seriesPhaseAfterLoad({ found: true, seasonCount: m3uSeasons.length }));
     } catch {
       // Fetch failed — stay honest: only "missing" after the request finished empty/failed.
-      setPhase('missing');
+      setPhase(seriesPhaseAfterLoad({ found: false, seasonCount: 0 }));
     }
   }, [id]);
 
@@ -168,8 +173,14 @@ export default function SeriesDetailScreen() {
       />
 
       {phase === 'loading' ? (
-        <View style={styles.loading}>
-          <ActivityIndicator color={colors.cyan} size="large" />
+        <View style={styles.skeleton} accessibilityLabel="Chargement de la série">
+          <View style={styles.skeletonCover} />
+          <View style={styles.skeletonCopy}>
+            <View style={[styles.skeletonLine, { width: '70%' }]} />
+            <View style={[styles.skeletonLine, { width: '45%' }]} />
+            <View style={[styles.skeletonLine, { width: '90%' }]} />
+            <View style={[styles.skeletonLine, { width: '85%' }]} />
+          </View>
           <Text style={styles.loadingHint}>Chargement de la série…</Text>
         </View>
       ) : phase === 'missing' ? (
@@ -251,8 +262,25 @@ export default function SeriesDetailScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
-  loadingHint: { ...typography.body, color: colors.textSecondary },
+  skeleton: {
+    flex: 1,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    gap: spacing.md,
+  },
+  skeletonCover: {
+    width: 120,
+    aspectRatio: 2 / 3,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+  },
+  skeletonCopy: { gap: spacing.sm },
+  skeletonLine: {
+    height: 14,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surface,
+  },
+  loadingHint: { ...typography.body, color: colors.textSecondary, marginTop: spacing.md },
   list: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxxl, gap: spacing.xs },
   header: { gap: spacing.md, marginBottom: spacing.md },
   coverRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
