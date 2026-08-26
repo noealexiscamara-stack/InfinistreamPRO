@@ -160,5 +160,8 @@ uniquement (voir GUIDE_DEPLOIEMENT.md pour les migrations en production).
 
 Le template Expo managé ne pose pas nativement la catégorie `LEANBACK_LAUNCHER` ni `android:banner` sur le manifeste
 généré. `apps/mobile/plugins/withAndroidTv.js` est un config plugin Expo qui patche `AndroidManifest.xml` au moment
-du `prebuild`/build EAS pour ajouter ces éléments — voir LIMITATIONS.md pour ce qui reste à faire (navigation D-pad
-et focus visuel n'ont pas pu être testés faute d'émulateur Android TV disponible ici).
+du `prebuild`/build EAS pour ajouter ces éléments (installabilité Leanback, `leanback`/`touchscreen` non requis).
+
+Ce n'est **pas** encore le socle produit TV : la voie Expo officielle passe par le fork `react-native-tvos` et des
+profils EAS `EXPO_TV=1`. Synthèse go/no-go, écarts pairing/focus et plan post lot B :
+`docs/ETUDE_FAISABILITE_ANDROID_TV.md` (voir aussi LIMITATIONS.md §3).

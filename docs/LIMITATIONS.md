@@ -83,17 +83,23 @@ rapprocher le zapping des 2–3 s attendues en TV live. Le tampon d'**avance** (
 **Prochaine étape recommandée** : module Expo Kotlin exposant un plafond bitrate/hauteur Media3 si le produit
 exige un vrai plafond Économie (480p) côté lecteur.
 
-## 3. Android TV — manifeste patché, focus non testé
+## 3. Android TV — manifeste patché, produit TV non prêt
+
+Étude de faisabilité (document seul, août 2026) : `docs/ETUDE_FAISABILITE_ANDROID_TV.md`.
+Verdict court : installabilité Leanback **OK côté assets** (`tv_banner.png` 320×180 + master 1280×720) ;
+expérience télécommande **non faisable** sans bascule `react-native-tvos@0.86.2-0` (aligné RN `0.86.2`,
+**aucun retard** de ligne) + chantier focus (ce dernier attend le feu vert du lot B). Risque n°1 documenté :
+chrome lecteur (overlays) — rendu possible, interaction D-pad non assurée.
 
 Le config plugin `apps/mobile/plugins/withAndroidTv.js` ajoute `LEANBACK_LAUNCHER` et `android:banner` au manifeste
 généré. Non fait / non testé :
 
-- Le drawable `@drawable/tv_banner` référencé par le plugin **n'existe pas encore** — à fournir (image 320×180)
-  avant un premier build TV, sinon le build natif échouera à la résolution de ressource.
-- Navigation D-pad et style de focus visuel sur les listes/boutons (le style `pressed` actuel des composants suppose
-  une interaction tactile ; un vrai passage TV doit ajouter `focusable`/`hasTVPreferredFocus` et un style de focus
-  visible, non fait dans cette passe).
-- Aucun test sur émulateur/téléviseur Android TV réel n'a pu être effectué (pas d'émulateur disponible ici).
+- Stack actuelle = `react-native` upstream (pas le fork TV Expo) ; pas de profils EAS `EXPO_TV`.
+- Client pairing mobile : `start` seulement — pas de `poll` ni persistance du token après approbation.
+  **Effet Accueil dès aujourd’hui** : QR/code visibles ; après autorisation web, l’app ne reçoit pas de jeton
+  (voir étude §11). Décision lot B : finir le flux ou masquer la carte.
+- Navigation D-pad / style de focus : **reportés** (addendum « composants pensés pour le focus », post lot B).
+- Aucun test sur émulateur / stick Android TV ou Fire TV.
 
 ## 4. Paiements — stubs structurels, aucune intégration réelle
 

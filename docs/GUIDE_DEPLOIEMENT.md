@@ -74,7 +74,7 @@ pour l'activation du TLS via Let's Encrypt/Certbot.
 
 - Icônes/splash actuels sont ceux du template Expo par défaut (`assets/images/`) — à remplacer par l'identité
   visuelle finale d'Infiny Stream avant toute soumission.
-- Le drawable `tv_banner` (voir LIMITATIONS.md #3) doit exister avant un build incluant le support Android TV.
+- Le drawable `tv_banner` 320×180 est fourni sous `apps/mobile/assets/images/tv_banner.png` (voir étude TV).
 - Vérifiez la politique du Play Store concernant les applications IPTV "lecteur" (BYO source) — Infiny Stream ne
   redistribue aucun contenu, mais la fiche store doit le préciser clairement pour éviter un rejet.
 

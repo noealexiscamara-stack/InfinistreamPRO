@@ -78,9 +78,9 @@ Un release build nécessite une clé de signature — voir la documentation Expo
 
 Le config plugin `apps/mobile/plugins/withAndroidTv.js` patche automatiquement le manifeste lors du `prebuild`/build
 EAS — aucune commande différente n'est nécessaire, le même APK s'installe sur téléphone/tablette et sur Android TV.
-**Avant un premier build TV**, fournissez le drawable de bannière manquant : ajoutez une image 320×180 (PNG) à
-`apps/mobile/android/app/src/main/res/drawable/tv_banner.png` après le `prebuild` (ou adaptez le plugin pour pointer
-vers un asset déjà présent dans `assets/images/`).
+**Avant un premier build TV**, l’asset `apps/mobile/assets/images/tv_banner.png` (320×180) doit être présent —
+il l’est depuis août 2026 (master `tv_banner-1280x720.png` à côté). Le plugin le copie en
+`res/drawable/tv_banner.png` au prebuild.
 
 ## Backend (`apps/backend`)
 
