@@ -1,0 +1,17 @@
+/**
+ * Pure helpers for player progress display — unit-tested without expo-video.
+ */
+export function formatPlaybackClock(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  const total = Math.floor(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/** Progress bar + ±10s seek apply only to movie / series episodes — never live or radio. */
+export function shouldShowVodProgress(kind: string | undefined | null): boolean {
+  return kind === 'movie' || kind === 'series';
+}

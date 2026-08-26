@@ -32,6 +32,8 @@ import { usePlaybackKeepAwake } from '@/hooks/usePlaybackKeepAwake';
 import { PlayerVideoSurface } from '@/components/player/PlayerVideoSurface';
 import { PlayerChannelPicker } from '@/components/player/PlayerChannelPicker';
 import { PlayerGestureLayer } from '@/components/player/PlayerGestureLayer';
+import { PlayerProgressBar } from '@/components/player/PlayerProgressBar';
+import { shouldShowVodProgress } from '@/services/playback/playerProgress';
 import { useParentalStore } from '@/store/useParentalStore';
 import { forceDeactivatePlaybackKeepAwake } from '@/services/playback/playbackKeepAwake';
 
@@ -52,6 +54,7 @@ export default function PlayerScreen() {
   const [controlsVisible, setControlsVisible] = useState(true);
   const [channelListVisible, setChannelListVisible] = useState(false);
   const [aspectHint, setAspectHint] = useState<string | null>(null);
+  const [controlsLocked, setControlsLocked] = useState(false);
 
   const qualityMode = useSettingsStore((s) => s.qualityMode);
   const aspectMode = usePlayerAspectStore((s) => s.aspectMode);
@@ -96,7 +99,6 @@ export default function PlayerScreen() {
   /** Live / VOD / séries only — radios laissent l'écran s'éteindre. */
   usePlaybackKeepAwake(showVideo && screenState === 'playing', player.playing);
 
-  const channelNumber = (group?.sortIndex ?? channel?.sortIndex ?? 0) + 1;
   const channelTitle = group?.name ?? channel?.name ?? activeRadio?.name ?? '';
 
   const showAspectHint = useCallback((label: string) => {
@@ -114,11 +116,11 @@ export default function PlayerScreen() {
 
   const scheduleHideControls = useCallback(() => {
     if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
-    if (channelListVisible || screenState !== 'playing' || isRadio) return;
+    if (channelListVisible || screenState !== 'playing' || isRadio || controlsLocked) return;
     hideControlsTimer.current = setTimeout(() => {
       setControlsVisible(false);
     }, CONTROLS_HIDE_MS);
-  }, [channelListVisible, screenState, isRadio]);
+  }, [channelListVisible, screenState, isRadio, controlsLocked]);
 
   const revealControls = useCallback(() => {
     setControlsVisible(true);
@@ -168,6 +170,7 @@ export default function PlayerScreen() {
       setEpisodeSiblings([]);
       setControlsVisible(true);
       setChannelListVisible(false);
+      setControlsLocked(false);
 
       const ch = await getChannelById(channelId);
       if (cancelled) return;
@@ -329,6 +332,18 @@ export default function PlayerScreen() {
   const episodeIndex = channel ? episodeSiblings.findIndex((ep) => ep.id === channel.id) : -1;
   const showEpisodeSkip =
     channel?.kind === 'series' && !!channel.xtreamEpisodeId && episodeSiblings.length > 1;
+  const isVod = shouldShowVodProgress(channel?.kind);
+  const showSeekTransport = isVod;
+
+  const seekBy = useCallback(
+    (deltaSec: number) => {
+      if (!showSeekTransport) return;
+      const next = Math.max(0, Math.min(player.duration || Number.POSITIVE_INFINITY, player.currentTime + deltaSec));
+      player.currentTime = next;
+      revealControls();
+    },
+    [player, revealControls, showSeekTransport]
+  );
 
   const goToEpisode = useCallback(
     (direction: 1 | -1) => {
@@ -424,19 +439,15 @@ export default function PlayerScreen() {
 
         {controlsVisible && screenState !== 'error' && (
           <View style={[styles.controls, chromeInsets]} pointerEvents="box-none">
+            {/* HAUT — retour | titre | verrouillage */}
             <View style={styles.topBar}>
-              <Pressable onPress={handleBack} hitSlop={12}>
-                <Ionicons name="chevron-down" size={26} color={colors.textPrimary} />
+              <Pressable onPress={handleBack} hitSlop={12} accessibilityLabel="Retour">
+                <Ionicons name="chevron-down" size={28} color={colors.textPrimary} />
               </Pressable>
               <View style={styles.channelInfo}>
-                <View style={styles.titleRow}>
-                  {!!channelTitle && (
-                    <Text style={styles.channelNumber}>{channelNumber}</Text>
-                  )}
-                  <Text style={styles.channelName} numberOfLines={1}>
-                    {channelTitle}
-                  </Text>
-                </View>
+                <Text style={styles.channelName} numberOfLines={1}>
+                  {channelTitle}
+                </Text>
                 {!isRadio && (
                   <View style={styles.networkRow}>
                     <View
@@ -448,42 +459,39 @@ export default function PlayerScreen() {
                   </View>
                 )}
               </View>
-              {channel && (
-                <Pressable
-                  onPress={() => {
-                    toggleFavorite(channel.id, channel.sourceId);
-                    revealControls();
-                  }}
-                  hitSlop={12}
-                >
-                  <Ionicons
-                    name={isFavorite(channel.id) ? 'heart' : 'heart-outline'}
-                    size={24}
-                    color={isFavorite(channel.id) ? colors.brand : colors.textPrimary}
-                  />
-                </Pressable>
-              )}
+              <Pressable
+                onPress={() => {
+                  setControlsLocked((v) => !v);
+                  setControlsVisible(true);
+                  revealControls();
+                }}
+                hitSlop={12}
+                accessibilityLabel={controlsLocked ? 'Déverrouiller les commandes' : 'Verrouiller les commandes'}
+              >
+                <Ionicons
+                  name={controlsLocked ? 'lock-closed' : 'lock-open-outline'}
+                  size={24}
+                  color={colors.textPrimary}
+                />
+              </Pressable>
             </View>
 
+            {/* CENTRE — transport (seek ±10s seulement en VOD / épisode) */}
             {!isRadio && (
-              <View style={styles.bottomBar}>
-                {showEpisodeSkip ? (
+              <View style={styles.centerTransport} pointerEvents="box-none">
+                {showSeekTransport ? (
                   <Pressable
-                    style={styles.controlButton}
-                    onPress={() => {
-                      goToEpisode(-1);
-                      revealControls();
-                    }}
-                    hitSlop={12}
-                    disabled={episodeIndex <= 0}
+                    style={styles.transportButton}
+                    onPress={() => seekBy(-10)}
+                    hitSlop={16}
+                    accessibilityLabel="Reculer de 10 secondes"
                   >
-                    <Ionicons
-                      name="play-skip-back"
-                      size={26}
-                      color={episodeIndex <= 0 ? colors.textTertiary : colors.textPrimary}
-                    />
+                    <Ionicons name="play-back" size={36} color={colors.textPrimary} />
+                    <Text style={styles.seekLabel}>10</Text>
                   </Pressable>
-                ) : null}
+                ) : (
+                  <View style={styles.transportSpacer} />
+                )}
 
                 <Pressable
                   style={styles.playButton}
@@ -493,42 +501,81 @@ export default function PlayerScreen() {
                     revealControls();
                   }}
                   hitSlop={12}
+                  accessibilityLabel={player.playing ? 'Pause' : 'Lecture'}
                 >
-                  <Ionicons name={player.playing ? 'pause' : 'play'} size={30} color={colors.textPrimary} />
+                  <Ionicons name={player.playing ? 'pause' : 'play'} size={36} color={colors.textPrimary} />
                 </Pressable>
 
-                {showEpisodeSkip ? (
+                {showSeekTransport ? (
                   <Pressable
-                    style={styles.controlButton}
-                    onPress={() => {
-                      goToEpisode(1);
-                      revealControls();
-                    }}
-                    hitSlop={12}
-                    disabled={episodeIndex < 0 || episodeIndex >= episodeSiblings.length - 1}
+                    style={styles.transportButton}
+                    onPress={() => seekBy(10)}
+                    hitSlop={16}
+                    accessibilityLabel="Avancer de 10 secondes"
                   >
-                    <Ionicons
-                      name="play-skip-forward"
-                      size={26}
-                      color={
-                        episodeIndex < 0 || episodeIndex >= episodeSiblings.length - 1
-                          ? colors.textTertiary
-                          : colors.textPrimary
-                      }
-                    />
+                    <Ionicons name="play-forward" size={36} color={colors.textPrimary} />
+                    <Text style={styles.seekLabel}>10</Text>
                   </Pressable>
-                ) : null}
+                ) : (
+                  <View style={styles.transportSpacer} />
+                )}
+              </View>
+            )}
+
+            {/* BAS — progression (VOD uniquement) puis actions secondaires */}
+            {!isRadio && (
+              <View style={styles.bottomZone}>
+                {isVod ? <PlayerProgressBar player={player} onInteraction={revealControls} /> : null}
 
                 <View style={styles.bottomActions}>
+                  {showEpisodeSkip ? (
+                    <Pressable
+                      style={styles.iconAction}
+                      onPress={() => {
+                        goToEpisode(-1);
+                        revealControls();
+                      }}
+                      hitSlop={12}
+                      disabled={episodeIndex <= 0}
+                      accessibilityLabel="Épisode précédent"
+                    >
+                      <Ionicons
+                        name="play-skip-back"
+                        size={22}
+                        color={episodeIndex <= 0 ? colors.textTertiary : colors.textPrimary}
+                      />
+                      <Text style={styles.iconActionLabel}>Préc.</Text>
+                    </Pressable>
+                  ) : null}
+
                   <Pressable
                     style={styles.iconAction}
                     onPress={() => cycleAspectMode()}
                     hitSlop={12}
-                    accessibilityLabel="Cadrage de l'image"
+                    accessibilityLabel="Format d'image"
                   >
                     <Ionicons name="scan-outline" size={22} color={colors.textPrimary} />
                     <Text style={styles.iconActionLabel}>{playerAspectModeLabel(aspectMode)}</Text>
                   </Pressable>
+
+                  {channel ? (
+                    <Pressable
+                      style={styles.iconAction}
+                      onPress={() => {
+                        toggleFavorite(channel.id, channel.sourceId);
+                        revealControls();
+                      }}
+                      hitSlop={12}
+                      accessibilityLabel="Favori"
+                    >
+                      <Ionicons
+                        name={isFavorite(channel.id) ? 'heart' : 'heart-outline'}
+                        size={22}
+                        color={isFavorite(channel.id) ? colors.brand : colors.textPrimary}
+                      />
+                      <Text style={styles.iconActionLabel}>Favori</Text>
+                    </Pressable>
+                  ) : null}
 
                   {siblings.length > 0 && (
                     <Pressable
@@ -544,6 +591,30 @@ export default function PlayerScreen() {
                       <Text style={styles.iconActionLabel}>Liste</Text>
                     </Pressable>
                   )}
+
+                  {showEpisodeSkip ? (
+                    <Pressable
+                      style={styles.iconAction}
+                      onPress={() => {
+                        goToEpisode(1);
+                        revealControls();
+                      }}
+                      hitSlop={12}
+                      disabled={episodeIndex < 0 || episodeIndex >= episodeSiblings.length - 1}
+                      accessibilityLabel="Épisode suivant"
+                    >
+                      <Ionicons
+                        name="play-skip-forward"
+                        size={22}
+                        color={
+                          episodeIndex < 0 || episodeIndex >= episodeSiblings.length - 1
+                            ? colors.textTertiary
+                            : colors.textPrimary
+                        }
+                      />
+                      <Text style={styles.iconActionLabel}>Suiv.</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               </View>
             )}
@@ -616,39 +687,48 @@ const styles = StyleSheet.create({
     zIndex: 4,
   },
   topBar: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  channelInfo: { flex: 1 },
-  titleRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
-  channelNumber: {
-    ...typography.headline,
-    color: colors.brand,
-    fontVariant: ['tabular-nums'],
-    minWidth: 28,
-  },
-  channelName: { ...typography.headline, color: colors.textPrimary, flex: 1 },
+  channelInfo: { flex: 1, alignItems: 'center' },
+  channelName: { ...typography.headline, color: colors.textPrimary, textAlign: 'center', width: '100%' },
   networkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 2 },
   dot: { width: 6, height: 6, borderRadius: 3 },
   networkText: { ...typography.caption, color: colors.textSecondary },
-  bottomBar: {
+  centerTransport: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xxl,
+  },
+  transportButton: {
+    width: 64,
+    height: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  transportSpacer: { width: 64, height: 64 },
+  seekLabel: {
+    ...typography.caption,
+    color: colors.textPrimary,
+    fontSize: 10,
+    marginTop: -4,
+  },
+  playButton: {
+    width: 72,
+    height: 72,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomZone: {
+    gap: spacing.md,
+    width: '100%',
+  },
+  bottomActions: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.lg,
-  },
-  controlButton: { padding: spacing.sm },
-  playButton: {
-    width: 64,
-    height: 64,
-    borderRadius: radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bottomActions: {
-    position: 'absolute',
-    right: spacing.lg,
-    bottom: 0,
-    flexDirection: 'row',
-    gap: spacing.md,
+    flexWrap: 'wrap',
   },
   iconAction: {
     alignItems: 'center',
