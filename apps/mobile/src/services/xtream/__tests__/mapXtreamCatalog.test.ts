@@ -82,7 +82,7 @@ describe('buildXtreamChannelsFromFetch', () => {
     expect(result.vodAvailable).toBe(false);
     expect(result.vodError).toBe('VOD indisponible');
     expect(result.channels).toHaveLength(1);
-    expect(result.channels[0]).toMatchObject({ name: 'TF1', kind: 'live' });
+    expect(result.channels[0]).toMatchObject({ name: 'TF1', kind: 'live', xtreamStreamId: 1 });
   });
 
   it('includes movies and series catalog rows when APIs succeed', () => {
@@ -175,7 +175,7 @@ describe('buildXtreamChannelsFromFetch', () => {
     });
 
     expect(result.channels).toHaveLength(liveCount + vodCount + seriesCount);
-    expect(result.channels[0]).toMatchObject({ kind: 'live', name: 'Live 1' });
+    expect(result.channels[0]).toMatchObject({ kind: 'live', name: 'Live 1', xtreamStreamId: 1 });
 
     const firstMovie = result.channels[liveCount] as PersistableChannel;
     expect(firstMovie).toMatchObject({ kind: 'movie', name: 'Movie 1' });

@@ -85,6 +85,7 @@ export function appendXtreamLiveStreams(
       tvgId: stream.epgChannelId,
       sortIndex: sortIndexStart + i,
       kind: 'live',
+      xtreamStreamId: stream.streamId,
     });
   }
   return streams.length;

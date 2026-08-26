@@ -165,6 +165,39 @@ Utilise les credentials EAS distants pour signer, sans consommer le quota cloud
 *de compilation* (selon le plan). Moins pratique pour itérer que Gradle une fois
 `android/` en place.
 
+## AAB production + piste de test interne Play
+
+Le profil EAS `production` produit un **Android App Bundle** (`buildType: app-bundle`),
+pas un APK universel. Play découpe le téléchargement par ABI.
+
+**Ne pas déclarer l'AAB validé tant qu'il n'a pas été installé via la piste
+interne** — un AAB qui compile n'est pas un AAB qui s'installe.
+
+Procédure :
+
+1. Build AAB local (même keystore EAS) :
+   ```powershell
+   cd apps/mobile/android
+   .\gradlew.bat bundleRelease --no-daemon
+   # → app/build/outputs/bundle/release/app-release.aab
+   ```
+   ou `eas build -p android -e production` (cloud).
+
+2. Play Console → application → **Tests** → **Tests internes** → créer une
+   release, uploader l'AAB, ajouter le compte Google de la tablette comme
+   testeur, accepter le lien d'invitation sur l'appareil.
+
+3. Installer depuis Play (pas sideload). Noter :
+   - taille de **téléchargement** affichée par Play (ABI seul, typ. arm64) ;
+   - taille **installée** (`adb shell pm path` / paramètres Android) ;
+   - que l'upgrade se fait **par-dessus** l'APK sideload signé EAS (même clé).
+
+4. Coller les deux tailles dans le rapport de build. Sans ça, on reste sur
+   l'estimation « ¼–½ de l'APK universel ».
+
+Le sideload de validation UI reste l'**APK** universel (`assembleRelease` /
+`infiny-<sha>-local.apk`).
+
 ## Fichiers secrets — ne jamais committer
 
 Déjà dans `apps/mobile/.gitignore` :

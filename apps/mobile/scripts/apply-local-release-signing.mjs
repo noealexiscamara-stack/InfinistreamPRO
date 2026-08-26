@@ -49,7 +49,7 @@ function main() {
   console.log('Wrote', KEYSTORE_PROPS);
 
   let gradle = fs.readFileSync(APP_GRADLE, 'utf8');
-  gradle = gradle.replace(/versionCode\s+\d+/, 'versionCode 6');
+  gradle = gradle.replace(/versionCode\s+\d+/, 'versionCode 10');
 
   if (gradle.includes(MARKER_START)) {
     gradle = gradle.replace(new RegExp(`${MARKER_START}[\\s\\S]*?${MARKER_END}\\n?`, 'g'), '');
@@ -85,7 +85,7 @@ ${MARKER_END}
 
   gradle = `${gradle.trimEnd()}\n${snippet}\n`;
   fs.writeFileSync(APP_GRADLE, gradle);
-  console.log('Patched', APP_GRADLE, '(versionCode 6 + release signing)');
+  console.log('Patched', APP_GRADLE, '(versionCode 10 + release signing)');
 }
 
 main();
